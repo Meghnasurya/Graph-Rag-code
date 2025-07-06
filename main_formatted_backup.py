@@ -10,7 +10,18 @@ import json
 import base64
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from functools import wraps
+from functool            if existing_issues:
+                # Assuming the first match is the one to update
+                issue_key = existing_issues[0]['key']
+                self.jira.issue_update(
+                    issue_key,
+                    fields={
+                        'summary': summary,
+                        'description': description
+                    }
+                )
+                print(f"Updated Jira test case {issue_key} in project {project_key}")
+                return issue_keyps
 from threading import Thread
 
 # Third-party imports
@@ -287,9 +298,7 @@ class EnhancedGraphRAG:
 
     def close(self):
         if self.driver:
-            self.driver.close()
-
-    def verify_connection(self):
+            self.driver.close()    def verify_connection(self):
         try:
             with self.driver.session() as session:
                 result = session.run("RETURN 1")
@@ -735,7 +744,7 @@ def jira_auth():
     jira_auth_url = (f"https://auth.atlassian.com/authorize"
                     f"?audience=api.atlassian.com"
                     f"&client_id={Config.JIRA_CLIENT_ID}"
-                    f"&scope=read:jira-work write:jira-work"
+                    f"&scope=read:jira-work"
                     f"&redirect_uri={Config.JIRA_REDIRECT_URI}"
                     f"&response_type=code")
     return redirect(jira_auth_url)
@@ -762,11 +771,9 @@ def jira_callback():
     access_token = token_data.get('access_token')
     
     if access_token:
-        # Store in session
-        session['user_id'] = str(uuid.uuid4())
         session['jira_token'] = access_token
         flash('Jira authentication successful')
-        return redirect(url_for('select_jira_project'))
+        return redirect(url_for('select_project'))
     else:
         flash('Failed to get Jira access token')
         return redirect(url_for('login'))
@@ -784,9 +791,9 @@ def select_repo():
     return render_template("select_repo.html", repos=repos)
 
 
-@app.route("/select-jira-project")
+@app.route("/select-project")
 @login_required
-def select_jira_project():
+def select_project():
     """Select Jira project"""
     if 'jira_token' not in session:
         return redirect(url_for('jira_auth'))
@@ -797,7 +804,7 @@ def select_jira_project():
         headers={'Authorization': f'Bearer {session["jira_token"]}'}
     )
     sites = sites_response.json()
-    return render_template("select_jira_project.html", sites=sites)
+    return render_template("select_project.html", sites=sites)
 
 
 @app.route("/process-selections", methods=["POST"])
@@ -805,95 +812,61 @@ def select_jira_project():
 def process_selections():
     """Process repository and project selections"""
     github_repo = request.form.get('github_repo')
-    
-    if github_repo:
-        session['selected_github_repo'] = github_repo
-        flash(f'GitHub repository selected: {github_repo}')
-
-        # Start background process to load GitHub data
-        def load_github_data():
-            user_session = UserSession(
-                user_id=session['user_id'],
-                github_token=session.get('github_token'),
-                selected_github_repo=session.get('selected_github_repo')
-            )
-
-            if user_session.github_token and user_session.selected_github_repo:
-                print(f"Loading GitHub data from: {user_session.selected_github_repo}")
-                github_service = GitHubService(user_session.github_token)
-                repo_data = github_service.get_repo_contents(user_session.selected_github_repo)
-                
-                # Debug print
-                print(f"Fetched GitHub data: docs={len(repo_data.get('docs', {}))}, tests={len(repo_data.get('tests', {}))}, code={len(repo_data.get('code', {}))}")
-                
-                # Update graph and embeddings
-                agentic_rag.graph_rag.update_knowledge(repo_data, f"github:{user_session.selected_github_repo}")
-                docs_count = agentic_rag.embedding_rag.update_embeddings(repo_data, f"github:{user_session.selected_github_repo}", DOCS_COLLECTION)
-                tests_count = agentic_rag.embedding_rag.update_embeddings(repo_data, f"github:{user_session.selected_github_repo}", TESTS_COLLECTION)
-                print(f"Embedded {docs_count} docs and {tests_count} test chunks")
-
-        # Start background thread
-        thread = Thread(target=load_github_data)
-        thread.start()
-
-        flash('GitHub data loading started in background. You can now use the Agentic RAG system.')
-        return redirect(url_for('dashboard'))
-
-    return redirect(url_for('dashboard'))
-
-
-@app.route("/process-jira-selection", methods=["POST"])
-@login_required  
-def process_jira_selection():
-    """Process Jira project selection"""
     jira_site = request.form.get('jira_site')
     jira_project = request.form.get('jira_project')
 
+    if github_repo:
+        session['selected_github_repo'] = github_repo
     if jira_site:
         session['jira_url'] = jira_site
-        flash(f'Jira site selected: {jira_site}')
     if jira_project:
         session['selected_jira_project'] = jira_project
-        flash(f'Jira project selected: {jira_project}')
 
-        # Start background process to load Jira data
-        def load_jira_data():
-            user_session = UserSession(
-                user_id=session['user_id'],
-                jira_token=session.get('jira_token'),
-                jira_url=session.get('jira_url'),
-                selected_jira_project=session.get('selected_jira_project')
-            )
+    # Start background process to load data
+    def load_data():
+        user_session = UserSession(
+            user_id=session['user_id'],
+            github_token=session.get('github_token'),
+            jira_token=session.get('jira_token'),
+            jira_url=session.get('jira_url'),
+            selected_github_repo=session.get('selected_github_repo'),
+            selected_jira_project=session.get('selected_jira_project')
+        )
 
-            if (user_session.jira_token and user_session.jira_url and 
-                user_session.selected_jira_project):
-                print(f"Loading Jira data from: {user_session.selected_jira_project}")
-                jira_service = JiraService(user_session.jira_url, user_session.jira_token)
-                test_cases = jira_service.get_test_cases(user_session.selected_jira_project)
-                
-                print(f"Fetched {len(test_cases)} Jira test cases")
-                
-                # Convert test cases to embeddable format
-                jira_data = {
-                    'tests': {
-                        f"jira:{tc['key']}": f"{tc['summary']}\n{tc['description']}" 
-                        for tc in test_cases
-                    }
+        # Load GitHub data
+        if user_session.github_token and user_session.selected_github_repo:
+            github_service = GitHubService(user_session.github_token)
+            repo_data = github_service.get_repo_contents(user_session.selected_github_repo)
+            
+            # Update graph and embeddings
+            agentic_rag.graph_rag.update_knowledge(repo_data, f"github:{user_session.selected_github_repo}")
+            agentic_rag.embedding_rag.update_embeddings(repo_data, f"github:{user_session.selected_github_repo}", DOCS_COLLECTION)
+            agentic_rag.embedding_rag.update_embeddings(repo_data, f"github:{user_session.selected_github_repo}", TESTS_COLLECTION)
+
+        # Load Jira data
+        if (user_session.jira_token and user_session.jira_url and 
+            user_session.selected_jira_project):
+            jira_service = JiraService(user_session.jira_url, user_session.jira_token)
+            test_cases = jira_service.get_test_cases(user_session.selected_jira_project)
+            
+            # Convert test cases to embeddable format
+            jira_data = {
+                'tests': {
+                    f"jira:{tc['key']}": f"{tc['summary']}\n{tc['description']}" 
+                    for tc in test_cases
                 }
-                
-                # Update graph and embeddings with Jira data
-                agentic_rag.graph_rag.update_knowledge(jira_data, f"jira:{user_session.selected_jira_project}")
-                jira_tests_count = agentic_rag.embedding_rag.update_embeddings(jira_data, f"jira:{user_session.selected_jira_project}", TESTS_COLLECTION)
-                print(f"Embedded {jira_tests_count} Jira test chunks")
+            }
+            
+            # Update graph and embeddings with Jira data
+            agentic_rag.graph_rag.update_knowledge(jira_data, f"jira:{user_session.selected_jira_project}")
+            agentic_rag.embedding_rag.update_embeddings(jira_data, f"jira:{user_session.selected_jira_project}", TESTS_COLLECTION)
 
-        # Start background thread
-        thread = Thread(target=load_jira_data)
-        thread.start()
+    # Start background thread
+    thread = Thread(target=load_data)
+    thread.start()
 
-        flash('Jira data loading started in background. You can now use the test generation system.')
-        return redirect(url_for('jira_dashboard'))
-
-    return redirect(url_for('select_jira_project'))
+    flash('Data loading started in background. You can now use the Agentic RAG system.')
+    return redirect(url_for('dashboard'))
 
 
 @app.route("/dashboard")
@@ -901,19 +874,6 @@ def process_jira_selection():
 def dashboard():
     """Main dashboard with agentic RAG interface"""
     return render_template("dashboard.html")
-
-
-@app.route("/jira-dashboard")
-@login_required
-def jira_dashboard():
-    """Jira-specific dashboard for test generation"""
-    if 'jira_token' not in session or 'selected_jira_project' not in session:
-        flash('Please select a Jira project first')
-        return redirect(url_for('select_jira_project'))
-    
-    return render_template("jira_dashboard.html", 
-                         project=session.get('selected_jira_project'),
-                         jira_url=session.get('jira_url'))
 
 
 @app.route("/query", methods=["POST"])
@@ -930,29 +890,6 @@ def process_query():
         jira_token=session.get('jira_token'),
         jira_url=session.get('jira_url'),
         selected_github_repo=session.get('selected_github_repo'),
-        selected_jira_project=session.get('selected_jira_project')
-    )
-
-    # Process query through agentic RAG
-    result = agentic_rag.process_query(query, user_session)
-    return jsonify(result)
-
-
-@app.route("/jira-query", methods=["POST"])
-@login_required
-def process_jira_query():
-    """Process user query specifically for Jira test generation"""
-    query = request.form.get('query')
-    if not query:
-        return jsonify({'error': 'Query is required'}), 400
-
-    if 'jira_token' not in session or 'selected_jira_project' not in session:
-        return jsonify({'error': 'Jira project not selected'}), 400
-
-    user_session = UserSession(
-        user_id=session['user_id'],
-        jira_token=session.get('jira_token'),
-        jira_url=session.get('jira_url'),
         selected_jira_project=session.get('selected_jira_project')
     )
 
@@ -996,37 +933,10 @@ def logout():
 @app.route("/status")
 def status():
     """Application status endpoint"""
-    try:
-        # Get collection info
-        docs_info = qdrant.get_collection(DOCS_COLLECTION)
-        tests_info = qdrant.get_collection(TESTS_COLLECTION)
-        
-        return jsonify({
-            'status': 'running',
-            'timestamp': datetime.now().isoformat(),
-            'github_connected': 'github_token' in session,
-            'jira_connected': 'jira_token' in session,
-            'repo_selected': 'selected_github_repo' in session,
-            'project_selected': 'selected_jira_project' in session,
-            'collections_info': {
-                'docs_count': docs_info.points_count,
-                'tests_count': tests_info.points_count
-            }
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'running',
-            'timestamp': datetime.now().isoformat(),
-            'github_connected': 'github_token' in session,
-            'jira_connected': 'jira_token' in session,
-            'repo_selected': 'selected_github_repo' in session,
-            'project_selected': 'selected_jira_project' in session,
-            'collections_info': {
-                'docs_count': 0,
-                'tests_count': 0
-            },
-            'error': str(e)
-        })
+    return jsonify({
+        'status': 'running',
+        'timestamp': datetime.now().isoformat()
+    })
 
 
 if __name__ == "__main__":
