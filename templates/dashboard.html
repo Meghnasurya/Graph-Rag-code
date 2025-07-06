@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Agentic RAG System{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card-modern p-4">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h2 class="mb-2">
+                            <i class="fas fa-tachometer-alt me-2 text-primary"></i>
+                            Dashboard
+                        </h2>
+                        <p class="text-muted mb-0">
+                            Generate intelligent test cases using AI-powered analysis of your codebase and requirements.
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-md-end">
+                        <div class="d-flex gap-2 justify-content-md-end">
+                            <span class="status-indicator status-connected" id="github-status">
+                                <i class="fab fa-github me-1"></i>
+                                GitHub Connected
+                            </span>
+                            <span class="status-indicator status-connected" id="jira-status">
+                                <i class="fab fa-atlassian me-1"></i>
+                                Jira Connected
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Query Interface -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="query-container">
+                <h4 class="mb-3">
+                    <i class="fas fa-search me-2 text-primary"></i>
+                    Test Generation Query
+                </h4>
+                <form id="queryForm">
+                    <div class="mb-3">
+                        <label for="queryInput" class="form-label fw-semibold">
+                            Describe your testing requirements:
+                        </label>
+                        <textarea 
+                            class="form-control query-input" 
+                            id="queryInput" 
+                            name="query" 
+                            placeholder="Example: I need tests for user authentication with multi-factor authentication, including edge cases for invalid credentials and session management..."
+                            required>
+                        </textarea>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-gradient-primary btn-lg" id="generateBtn">
+                            <i class="fas fa-magic me-2"></i>
+                            Generate Tests
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-lg" id="clearBtn">
+                            <i class="fas fa-eraser me-2"></i>
+                            Clear
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div class="row mb-4" id="loadingSection" style="display: none;">
+        <div class="col-12">
+            <div class="card-modern p-4 text-center">
+                <div class="d-flex align-items-center justify-content-center mb-3">
+                    <div class="loading-spinner me-3"></div>
+                    <h5 class="mb-0">Analyzing your requirements<span class="loading-dots"></span></h5>
+                </div>
+                <p class="text-muted mb-0">
+                    AI is processing your codebase and generating intelligent test cases...
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="row" id="resultsSection" style="display: none;">
+        <!-- Analysis Results -->
+        <div class="col-lg-6 mb-4">
+            <div class="result-card">
+                <div class="result-header">
+                    <div class="result-icon" style="background: var(--gradient-primary);">
+                        <i class="fas fa-analytics"></i>
+                    </div>
+                    <div>
+                        <h5 class="mb-1">Analysis Results</h5>
+                        <p class="text-muted mb-0">AI analysis of existing tests and requirements</p>
+                    </div>
+                </div>
+                <div id="analysisContent">
+                    <!-- Analysis content will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Generated Tests -->
+        <div class="col-lg-6 mb-4">
+            <div class="result-card">
+                <div class="result-header">
+                    <div class="result-icon" style="background: var(--gradient-success);">
+                        <i class="fas fa-code"></i>
+                    </div>
+                    <div>
+                        <h5 class="mb-1">Generated Test Cases</h5>
+                        <p class="text-muted mb-0">Automatically generated test code and cases</p>
+                    </div>
+                </div>
+                <div id="testContent">
+                    <!-- Test content will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Jira Integration -->
+        <div class="col-12 mb-4">
+            <div class="result-card">
+                <div class="result-header">
+                    <div class="result-icon" style="background: var(--gradient-secondary);">
+                        <i class="fab fa-atlassian"></i>
+                    </div>
+                    <div>
+                        <h5 class="mb-1">Jira Integration</h5>
+                        <p class="text-muted mb-0">Test cases created/updated in your Jira project</p>
+                    </div>
+                </div>
+                <div id="jiraContent">
+                    <!-- Jira content will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card-modern p-4">
+                <h5 class="mb-3">
+                    <i class="fas fa-bolt me-2 text-warning"></i>
+                    Quick Actions
+                </h5>
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <a href="{{ url_for('select_repo') }}" class="btn btn-outline-primary w-100">
+                            <i class="fab fa-github me-2"></i>
+                            Change Repository
+                        </a>
+                    </div>
+                    <div class="col-md-3">
+                        <a href="{{ url_for('select_project') }}" class="btn btn-outline-secondary w-100">
+                            <i class="fab fa-atlassian me-2"></i>
+                            Change Project
+                        </a>
+                    </div>
+                    <div class="col-md-3">
+                        <a href="{{ url_for('status') }}" class="btn btn-outline-info w-100">
+                            <i class="fas fa-info-circle me-2"></i>
+                            System Status
+                        </a>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-outline-success w-100" onclick="location.reload()">
+                            <i class="fas fa-sync-alt me-2"></i>
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const queryForm = document.getElementById('queryForm');
+    const queryInput = document.getElementById('queryInput');
+    const generateBtn = document.getElementById('generateBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const loadingSection = document.getElementById('loadingSection');
+    const resultsSection = document.getElementById('resultsSection');
+
+    // Form submission
+    queryForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const query = queryInput.value.trim();
+        if (!query) {
+            alert('Please enter your testing requirements.');
+            return;
+        }
+
+        // Show loading state
+        loadingSection.style.display = 'block';
+        resultsSection.style.display = 'none';
+        generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Generating...';
+        generateBtn.disabled = true;
+
+        try {
+            const formData = new FormData();
+            formData.append('query', query);
+
+            const response = await fetch('/query', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            // Hide loading state
+            loadingSection.style.display = 'none';
+            generateBtn.innerHTML = '<i class="fas fa-magic me-2"></i>Generate Tests';
+            generateBtn.disabled = false;
+
+            if (result.error) {
+                throw new Error(result.error);
+            }
+
+            // Display results
+            displayResults(result);
+            resultsSection.style.display = 'block';
+
+        } catch (error) {
+            console.error('Error:', error);
+            loadingSection.style.display = 'none';
+            generateBtn.innerHTML = '<i class="fas fa-magic me-2"></i>Generate Tests';
+            generateBtn.disabled = false;
+            
+            alert('Error generating tests: ' + error.message);
+        }
+    });
+
+    // Clear button
+    clearBtn.addEventListener('click', function() {
+        queryInput.value = '';
+        resultsSection.style.display = 'none';
+        queryInput.focus();
+    });
+
+    function displayResults(result) {
+        // Display analysis
+        const analysisContent = document.getElementById('analysisContent');
+        if (result.analysis) {
+            analysisContent.innerHTML = `
+                <div class="mb-3">
+                    <h6><i class="fas fa-search me-2"></i>Requirements Analysis</h6>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <div class="badge ${result.analysis.existing_functionality ? 'bg-success' : 'bg-secondary'} w-100">
+                                <i class="fas fa-${result.analysis.existing_functionality ? 'check' : 'times'} me-1"></i>
+                                Existing Functionality
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="badge ${result.analysis.existing_tests ? 'bg-success' : 'bg-secondary'} w-100">
+                                <i class="fas fa-${result.analysis.existing_tests ? 'check' : 'times'} me-1"></i>
+                                Existing Tests
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="badge ${result.analysis.needs_new_tests ? 'bg-warning' : 'bg-secondary'} w-100">
+                                <i class="fas fa-${result.analysis.needs_new_tests ? 'plus' : 'check'} me-1"></i>
+                                New Tests Needed
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="badge ${result.analysis.needs_test_updates ? 'bg-info' : 'bg-secondary'} w-100">
+                                <i class="fas fa-${result.analysis.needs_test_updates ? 'edit' : 'check'} me-1"></i>
+                                Updates Needed
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <h6><i class="fas fa-lightbulb me-2"></i>Recommendations</h6>
+                    <ul class="list-unstyled">
+                        ${result.analysis.recommendations?.map(rec => 
+                            `<li><i class="fas fa-arrow-right me-2 text-primary"></i>${rec}</li>`
+                        ).join('') || '<li class="text-muted">No specific recommendations</li>'}
+                    </ul>
+                </div>
+            `;
+        }
+
+        // Display generated tests
+        const testContent = document.getElementById('testContent');
+        if (result.generated_tests) {
+            const tests = result.generated_tests;
+            testContent.innerHTML = `
+                <div class="mb-3">
+                    <h6><i class="fas fa-file-code me-2"></i>${tests.file_name || 'Generated Test File'}</h6>
+                    <div class="result-code">
+                        <pre><code>${tests.test_code || 'No test code generated'}</code></pre>
+                    </div>
+                </div>
+                <div>
+                    <h6><i class="fas fa-list me-2"></i>Test Cases (${tests.test_cases?.length || 0})</h6>
+                    ${tests.test_cases?.map((tc, index) => `
+                        <div class="card mb-2">
+                            <div class="card-body p-3">
+                                <h6 class="card-title">${tc.name}</h6>
+                                <p class="card-text text-muted">${tc.description}</p>
+                                ${tc.steps ? `
+                                    <div class="mb-2">
+                                        <strong>Steps:</strong>
+                                        <ol class="mb-0">
+                                            ${tc.steps.map(step => `<li>${step}</li>`).join('')}
+                                        </ol>
+                                    </div>
+                                ` : ''}
+                                ${tc.expected_result ? `
+                                    <div>
+                                        <strong>Expected Result:</strong> ${tc.expected_result}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('') || '<p class="text-muted">No test cases generated</p>'}
+                </div>
+            `;
+        }
+
+        // Display Jira integration status
+        const jiraContent = document.getElementById('jiraContent');
+        jiraContent.innerHTML = `
+            <div class="alert alert-success" role="alert">
+                <i class="fas fa-check-circle me-2"></i>
+                Test cases have been automatically created/updated in your Jira project.
+            </div>
+        `;
+    }
+
+    // Auto-resize textarea
+    queryInput.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = this.scrollHeight + 'px';
+    });
+});
+</script>
+{% endblock %}

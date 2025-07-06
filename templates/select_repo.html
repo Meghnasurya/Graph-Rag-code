@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block title %}Select Repository - Agentic RAG System{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <!-- Header -->
+            <div class="card-modern p-4 mb-4">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h2 class="mb-2">
+                            <i class="fab fa-github me-2 text-primary"></i>
+                            Select GitHub Repository
+                        </h2>
+                        <p class="text-muted mb-0">
+                            Choose a repository to analyze for test generation. The system will scan your code, documentation, and existing tests.
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-md-end">
+                        <span class="status-indicator status-connected">
+                            <i class="fab fa-github me-1"></i>
+                            GitHub Connected
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Repository Grid -->
+            {% if repos %}
+            <div class="row g-4">
+                {% for repo in repos %}
+                <div class="col-md-6 col-lg-4">
+                    <div class="card-modern h-100 repo-card" data-repo="{{ repo.full_name }}">
+                        <div class="card-body p-4">
+                            <div class="d-flex align-items-start mb-3">
+                                <div class="repo-icon me-3">
+                                    <i class="fab fa-github"></i>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <h5 class="card-title mb-1">{{ repo.name }}</h5>
+                                    <p class="text-muted small mb-0">{{ repo.full_name }}</p>
+                                </div>
+                                {% if repo.private %}
+                                <span class="badge bg-warning">
+                                    <i class="fas fa-lock me-1"></i>Private
+                                </span>
+                                {% else %}
+                                <span class="badge bg-success">
+                                    <i class="fas fa-globe me-1"></i>Public
+                                </span>
+                                {% endif %}
+                            </div>
+                            
+                            {% if repo.description %}
+                            <p class="card-text text-muted mb-3">{{ repo.description[:100] }}{% if repo.description|length > 100 %}...{% endif %}</p>
+                            {% else %}
+                            <p class="card-text text-muted mb-3">No description available</p>
+                            {% endif %}
+                            
+                            <div class="d-grid">
+                                <button class="btn btn-gradient-primary select-repo-btn" data-repo="{{ repo.full_name }}">
+                                    <i class="fas fa-check me-2"></i>
+                                    Select Repository
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Pagination or Load More (if needed) -->
+            {% if repos|length >= 30 %}
+            <div class="text-center mt-4">
+                <button class="btn btn-outline-primary btn-lg">
+                    <i class="fas fa-plus me-2"></i>
+                    Load More Repositories
+                </button>
+            </div>
+            {% endif %}
+
+            {% else %}
+            <!-- No Repositories -->
+            <div class="card-modern p-5 text-center">
+                <div class="feature-icon github mx-auto mb-4" style="width: 100px; height: 100px; font-size: 2.5rem;">
+                    <i class="fab fa-github"></i>
+                </div>
+                <h4 class="mb-3">No Repositories Found</h4>
+                <p class="text-muted mb-4">
+                    We couldn't find any repositories in your GitHub account. Make sure you have repositories available and try reconnecting.
+                </p>
+                <div class="d-flex gap-2 justify-content-center">
+                    <a href="{{ url_for('github_auth') }}" class="btn btn-gradient-primary">
+                        <i class="fab fa-github me-2"></i>
+                        Reconnect GitHub
+                    </a>
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>
+                        Back to Dashboard
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Actions -->
+            <div class="card-modern p-4 mt-4">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h6 class="mb-1">
+                            <i class="fas fa-info-circle me-2 text-info"></i>
+                            What happens next?
+                        </h6>
+                        <p class="text-muted mb-0">
+                            After selecting a repository, the system will analyze your code structure, documentation, and existing tests to build a knowledge base for intelligent test generation.
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-md-end">
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>
+                            Back to Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center p-5">
+                <div class="loading-spinner mb-3" style="width: 50px; height: 50px; border-width: 5px;"></div>
+                <h5 class="mb-2">Processing Repository</h5>
+                <p class="text-muted mb-0">Analyzing code structure and building knowledge base...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.repo-card {
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.repo-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--primary-color);
+}
+
+.repo-card.selected {
+    border-color: var(--success-color);
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.repo-icon {
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(135deg, #333 0%, #24292e 100%);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.5rem;
+}
+
+.select-repo-btn {
+    transition: all 0.3s ease;
+}
+
+.select-repo-btn:hover {
+    transform: translateY(-2px);
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectBtns = document.querySelectorAll('.select-repo-btn');
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+
+    selectBtns.forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const repoName = this.getAttribute('data-repo');
+            
+            // Show loading modal
+            loadingModal.show();
+            
+            try {
+                // Send selection to server
+                const formData = new FormData();
+                formData.append('github_repo', repoName);
+                
+                const response = await fetch('/process-selections', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    // Redirect to dashboard or next step
+                    window.location.href = '/dashboard';
+                } else {
+                    throw new Error('Failed to process repository selection');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                loadingModal.hide();
+                alert('Error selecting repository: ' + error.message);
+            }
+        });
+    });
+
+    // Add click effect to cards
+    document.querySelectorAll('.repo-card').forEach(card => {
+        card.addEventListener('click', function() {
+            const btn = this.querySelector('.select-repo-btn');
+            if (btn) {
+                btn.click();
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

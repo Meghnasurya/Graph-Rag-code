@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block title %}Select Jira Project - Agentic RAG System{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <!-- Header -->
+            <div class="card-modern p-4 mb-4">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h2 class="mb-2">
+                            <i class="fab fa-atlassian me-2 text-primary"></i>
+                            Select Jira Project
+                        </h2>
+                        <p class="text-muted mb-0">
+                            Choose your Jira project and site for test case management and Xray integration.
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-md-end">
+                        <span class="status-indicator status-connected">
+                            <i class="fab fa-atlassian me-1"></i>
+                            Jira Connected
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sites Selection -->
+            {% if sites %}
+            <div class="card-modern p-4 mb-4">
+                <h5 class="mb-3">
+                    <i class="fas fa-server me-2"></i>
+                    Available Jira Sites
+                </h5>
+                <div class="row g-3">
+                    {% for site in sites %}
+                    <div class="col-md-6">
+                        <div class="site-card" data-site-id="{{ site.id }}" data-site-url="{{ site.url }}">
+                            <div class="card border-2">
+                                <div class="card-body p-3">
+                                    <div class="d-flex align-items-center">
+                                        <div class="site-icon me-3">
+                                            <i class="fab fa-atlassian"></i>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-1">{{ site.name }}</h6>
+                                            <p class="text-muted small mb-0">{{ site.url }}</p>
+                                        </div>
+                                        <div>
+                                            <button class="btn btn-outline-primary btn-sm select-site-btn" 
+                                                    data-site-id="{{ site.id }}" 
+                                                    data-site-url="{{ site.url }}">
+                                                <i class="fas fa-arrow-right"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Projects Section (Initially Hidden) -->
+            <div class="card-modern p-4" id="projectsSection" style="display: none;">
+                <h5 class="mb-3">
+                    <i class="fas fa-project-diagram me-2"></i>
+                    Available Projects
+                </h5>
+                <div class="row g-4" id="projectsGrid">
+                    <!-- Projects will be populated here -->
+                </div>
+                
+                <div class="text-center mt-4" id="projectsLoading" style="display: none;">
+                    <div class="loading-spinner me-2"></div>
+                    Loading projects...
+                </div>
+            </div>
+
+            <!-- No Sites/Projects -->
+            <div class="card-modern p-5 text-center" id="noDataSection" style="display: none;">
+                <div class="feature-icon jira mx-auto mb-4" style="width: 100px; height: 100px; font-size: 2.5rem;">
+                    <i class="fab fa-atlassian"></i>
+                </div>
+                <h4 class="mb-3">No Projects Found</h4>
+                <p class="text-muted mb-4">
+                    We couldn't find any Jira projects. Make sure you have access to projects and try reconnecting.
+                </p>
+                <div class="d-flex gap-2 justify-content-center">
+                    <a href="{{ url_for('jira_auth') }}" class="btn btn-gradient-secondary">
+                        <i class="fab fa-atlassian me-2"></i>
+                        Reconnect Jira
+                    </a>
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>
+                        Back to Dashboard
+                    </a>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="card-modern p-4 mt-4">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h6 class="mb-1">
+                            <i class="fas fa-info-circle me-2 text-info"></i>
+                            Xray Integration
+                        </h6>
+                        <p class="text-muted mb-0">
+                            The system will automatically detect and integrate with Xray if available in your Jira instance for enhanced test management capabilities.
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-md-end">
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>
+                            Back to Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center p-5">
+                <div class="loading-spinner mb-3" style="width: 50px; height: 50px; border-width: 5px;"></div>
+                <h5 class="mb-2">Setting Up Integration</h5>
+                <p class="text-muted mb-0">Connecting to Jira and loading test cases...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.site-card {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.site-card:hover .card {
+    border-color: var(--primary-color);
+    transform: translateY(-2px);
+}
+
+.site-card.selected .card {
+    border-color: var(--success-color);
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.site-icon {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, #0052cc 0%, #2684ff 100%);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.2rem;
+}
+
+.project-card {
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.project-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--primary-color);
+}
+
+.project-card.selected {
+    border-color: var(--success-color);
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.project-icon {
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(135deg, #0052cc 0%, #2684ff 100%);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.5rem;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const siteBtns = document.querySelectorAll('.select-site-btn');
+    const projectsSection = document.getElementById('projectsSection');
+    const projectsGrid = document.getElementById('projectsGrid');
+    const projectsLoading = document.getElementById('projectsLoading');
+    const noDataSection = document.getElementById('noDataSection');
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+    
+    let selectedSiteUrl = '';
+
+    // Site selection
+    siteBtns.forEach(btn => {
+        btn.addEventListener('click', async function(e) {
+            e.stopPropagation();
+            
+            const siteId = this.getAttribute('data-site-id');
+            const siteUrl = this.getAttribute('data-site-url');
+            selectedSiteUrl = siteUrl;
+            
+            // Mark site as selected
+            document.querySelectorAll('.site-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            this.closest('.site-card').classList.add('selected');
+            
+            // Show projects section and loading
+            projectsSection.style.display = 'block';
+            projectsLoading.style.display = 'block';
+            projectsGrid.innerHTML = '';
+            
+            try {
+                // Fetch projects for selected site
+                const formData = new FormData();
+                formData.append('site_id', siteId);
+                formData.append('site_url', siteUrl);
+                
+                const response = await fetch('/get-projects', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                projectsLoading.style.display = 'none';
+                
+                if (result.projects && result.projects.length > 0) {
+                    displayProjects(result.projects);
+                } else {
+                    projectsGrid.innerHTML = '<div class="col-12 text-center"><p class="text-muted">No projects found for this site.</p></div>';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                projectsLoading.style.display = 'none';
+                projectsGrid.innerHTML = '<div class="col-12 text-center"><p class="text-danger">Error loading projects. Please try again.</p></div>';
+            }
+        });
+    });
+
+    function displayProjects(projects) {
+        projectsGrid.innerHTML = projects.map(project => `
+            <div class="col-md-6 col-lg-4">
+                <div class="card-modern h-100 project-card" data-project-key="${project.key}">
+                    <div class="card-body p-4">
+                        <div class="d-flex align-items-start mb-3">
+                            <div class="project-icon me-3">
+                                <i class="fas fa-project-diagram"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <h5 class="card-title mb-1">${project.name}</h5>
+                                <p class="text-muted small mb-0">${project.key}</p>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button class="btn btn-gradient-secondary select-project-btn" data-project-key="${project.key}" data-project-name="${project.name}">
+                                <i class="fas fa-check me-2"></i>
+                                Select Project
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        // Add event listeners to project selection buttons
+        document.querySelectorAll('.select-project-btn').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                const projectKey = this.getAttribute('data-project-key');
+                const projectName = this.getAttribute('data-project-name');
+                
+                // Show loading modal
+                loadingModal.show();
+                
+                try {
+                    // Send selection to server
+                    const formData = new FormData();
+                    formData.append('jira_site', selectedSiteUrl);
+                    formData.append('jira_project', projectKey);
+                    
+                    const response = await fetch('/process-selections', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (response.ok) {
+                        // Redirect to dashboard
+                        window.location.href = '/dashboard';
+                    } else {
+                        throw new Error('Failed to process project selection');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    loadingModal.hide();
+                    alert('Error selecting project: ' + error.message);
+                }
+            });
+        });
+
+        // Add click effect to project cards
+        document.querySelectorAll('.project-card').forEach(card => {
+            card.addEventListener('click', function() {
+                const btn = this.querySelector('.select-project-btn');
+                if (btn) {
+                    btn.click();
+                }
+            });
+        });
+    }    // Show no data section if no sites available
+    const sites = {{ sites|tojson if sites else '[]' }};
+    if (!sites || sites.length === 0) {
+        noDataSection.style.display = 'block';
+    }
+});
+</script>
+{% endblock %}

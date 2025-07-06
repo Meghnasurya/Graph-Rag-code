@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Agentic RAG System{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8 text-center">
+                <h1 class="hero-title">
+                    <i class="fas fa-robot me-3"></i>
+                    Agentic RAG System
+                </h1>
+                <p class="hero-subtitle">
+                    Intelligent Test Generation with AI-Powered Analysis
+                </p>
+                <p class="lead opacity-75">
+                    Connect your GitHub repositories and Jira projects to automatically generate comprehensive test cases using advanced AI and machine learning.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <!-- Authentication Cards -->
+            <div class="row g-4 mb-5">
+                <div class="col-md-6">
+                    <div class="card-modern h-100 p-4 text-center">
+                        <div class="feature-icon github mx-auto mb-3">
+                            <i class="fab fa-github"></i>
+                        </div>
+                        <h4 class="mb-3">Connect GitHub</h4>
+                        <p class="text-muted mb-4">
+                            Connect your GitHub repositories to analyze code, documentation, and existing tests for intelligent test generation.
+                        </p>
+                        <a href="{{ url_for('github_auth') }}" class="btn btn-gradient-primary btn-lg">
+                            <i class="fab fa-github me-2"></i>
+                            Connect GitHub
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card-modern h-100 p-4 text-center">
+                        <div class="feature-icon jira mx-auto mb-3">
+                            <i class="fab fa-atlassian"></i>
+                        </div>
+                        <h4 class="mb-3">Connect Jira</h4>
+                        <p class="text-muted mb-4">
+                            Integrate with Jira and Xray to manage test cases, create executions, and maintain traceability.
+                        </p>
+                        <a href="{{ url_for('jira_auth') }}" class="btn btn-gradient-secondary btn-lg">
+                            <i class="fab fa-atlassian me-2"></i>
+                            Connect Jira
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Features Section -->
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="feature-card">
+                        <div class="feature-icon ai">
+                            <i class="fas fa-brain"></i>
+                        </div>
+                        <h5>AI-Powered Analysis</h5>
+                        <p class="text-muted">
+                            Advanced AI analyzes your codebase and requirements to generate contextually relevant test cases.
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="feature-card">
+                        <div class="feature-icon github">
+                            <i class="fas fa-code-branch"></i>
+                        </div>
+                        <h5>Repository Integration</h5>
+                        <p class="text-muted">
+                            Seamlessly integrate with GitHub to access documentation, code, and existing test suites.
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="feature-card">
+                        <div class="feature-icon jira">
+                            <i class="fas fa-tasks"></i>
+                        </div>
+                        <h5>Test Management</h5>
+                        <p class="text-muted">
+                            Automatically create and update test cases in Jira with Xray integration for comprehensive test management.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Getting Started -->
+            <div class="card-modern mt-5 p-4">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h4 class="mb-2">
+                            <i class="fas fa-rocket me-2 text-primary"></i>
+                            Getting Started
+                        </h4>
+                        <p class="text-muted mb-0">
+                            Connect both GitHub and Jira to unlock the full potential of AI-powered test generation. 
+                            The system will analyze your repositories and create intelligent test cases based on your requirements.
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-md-end">
+                        <div class="d-flex flex-column gap-2">
+                            <span class="badge bg-primary">
+                                <i class="fas fa-check me-1"></i>
+                                Code Analysis
+                            </span>
+                            <span class="badge bg-success">
+                                <i class="fas fa-check me-1"></i>
+                                Test Generation
+                            </span>
+                            <span class="badge bg-info">
+                                <i class="fas fa-check me-1"></i>
+                                Jira Integration
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Background Animation -->
+<div class="position-fixed top-0 start-0 w-100 h-100" style="z-index: -1; pointer-events: none;">
+    <div class="position-absolute" style="top: 10%; left: 10%; width: 100px; height: 100px; background: rgba(255, 255, 255, 0.1); border-radius: 50%; animation: float 6s ease-in-out infinite;"></div>
+    <div class="position-absolute" style="top: 60%; right: 20%; width: 150px; height: 150px; background: rgba(255, 255, 255, 0.05); border-radius: 50%; animation: float 8s ease-in-out infinite reverse;"></div>
+    <div class="position-absolute" style="bottom: 20%; left: 30%; width: 80px; height: 80px; background: rgba(255, 255, 255, 0.08); border-radius: 50%; animation: float 7s ease-in-out infinite;"></div>
+</div>
+
+<style>
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-20px); }
+}
+</style>
+{% endblock %}
