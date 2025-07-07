@@ -248,74 +248,273 @@ document.addEventListener('DOMContentLoaded', function() {
         resultsSection.style.display = 'none';
         errorSection.style.display = 'none';
     }
-    
-    function showResults(data) {
+      function showResults(data) {
         const resultsContent = document.getElementById('resultsContent');
         let html = '';
         
-        if (data.analysis) {
-            html += '<div class="mb-4">';
-            html += '<h6><i class="fas fa-chart-line me-2"></i>Analysis</h6>';
-            html += '<div class="bg-light p-3 rounded">';
-            html += `<p><strong>Existing Functionality:</strong> ${data.analysis.existing_functionality ? 'Yes' : 'No'}</p>`;
-            html += `<p><strong>Existing Tests:</strong> ${data.analysis.existing_tests ? 'Yes' : 'No'}</p>`;
-            html += `<p><strong>Needs New Tests:</strong> ${data.analysis.needs_new_tests ? 'Yes' : 'No'}</p>`;
-            if (data.analysis.recommendations) {
-                html += '<p><strong>Recommendations:</strong></p>';
-                html += '<ul>';
-                data.analysis.recommendations.forEach(rec => {
-                    html += `<li>${rec}</li>`;
+        // Overall Status
+        html += '<div class="row mb-4">';
+        html += '<div class="col-12">';
+        if (data.error) {
+            html += '<div class="alert alert-danger d-flex align-items-center">';
+            html += '<i class="fas fa-exclamation-triangle me-3 fs-4"></i>';
+            html += '<div>';
+            html += '<h6 class="mb-1">Process Failed</h6>';
+            html += `<p class="mb-0">${data.error}</p>`;
+            html += '</div>';
+            html += '</div>';
+        } else if (data.generated_tests || data.updated_embeddings) {
+            html += '<div class="alert alert-success d-flex align-items-center">';
+            html += '<i class="fas fa-check-circle me-3 fs-4"></i>';
+            html += '<div>';
+            html += '<h6 class="mb-1">Process Completed Successfully</h6>';
+            html += '<p class="mb-0">Test cases have been generated and updated in your Jira project!</p>';
+            html += '</div>';
+            html += '</div>';
+        } else {
+            html += '<div class="alert alert-info d-flex align-items-center">';
+            html += '<i class="fas fa-info-circle me-3 fs-4"></i>';
+            html += '<div>';
+            html += '<h6 class="mb-1">Analysis Complete</h6>';
+            html += '<p class="mb-0">Existing tests already cover this requirement.</p>';
+            html += '</div>';
+            html += '</div>';
+        }
+        html += '</div>';
+        html += '</div>';
+        
+        // Sources Used Section
+        if (data.doc_results || data.test_results || data.existing_tests) {
+            html += '<div class="row mb-4">';
+            html += '<div class="col-12">';
+            html += '<div class="card border-primary">';
+            html += '<div class="card-header bg-primary text-white">';
+            html += '<h6 class="mb-0"><i class="fas fa-database me-2"></i>Sources Used</h6>';
+            html += '</div>';
+            html += '<div class="card-body">';
+            
+            // Documentation Sources
+            const docSources = data.doc_results || [];
+            if (docSources.length > 0) {
+                html += '<div class="mb-3">';
+                html += '<h7 class="text-primary"><i class="fas fa-book me-2"></i>Documentation</h7>';
+                docSources.forEach((doc, index) => {
+                    if (doc.payload && doc.payload.content) {
+                        html += '<div class="border rounded p-3 mt-2 bg-light">';
+                        html += `<div class="d-flex justify-content-between align-items-start mb-2">`;
+                        html += `<small class="text-muted"><strong>Source ${index + 1}:</strong> ${doc.payload.file_path || 'Unknown'}</small>`;
+                        html += `<span class="badge bg-secondary">Score: ${(doc.score || 0).toFixed(3)}</span>`;
+                        html += '</div>';
+                        const content = doc.payload.content.substring(0, 300);
+                        html += `<p class="small mb-0">${content}${doc.payload.content.length > 300 ? '...' : ''}</p>`;
+                        html += '</div>';
+                    }
                 });
-                html += '</ul>';
+                html += '</div>';
             }
-            html += '</div></div>';
+            
+            // Test Sources
+            const testSources = data.test_results || data.existing_tests || [];
+            if (testSources.length > 0) {
+                html += '<div class="mb-3">';
+                html += '<h7 class="text-success"><i class="fas fa-vial me-2"></i>Existing Tests</h7>';
+                testSources.forEach((test, index) => {
+                    if (test.payload && test.payload.content) {
+                        html += '<div class="border rounded p-3 mt-2 bg-light">';
+                        html += `<div class="d-flex justify-content-between align-items-start mb-2">`;
+                        html += `<small class="text-muted"><strong>Test ${index + 1}:</strong> ${test.payload.file_path || 'Unknown'}</small>`;
+                        html += `<span class="badge bg-secondary">Score: ${(test.score || 0).toFixed(3)}</span>`;
+                        html += '</div>';
+                        const content = test.payload.content.substring(0, 300);
+                        html += `<p class="small mb-0">${content}${test.payload.content.length > 300 ? '...' : ''}</p>`;
+                        html += '</div>';
+                    }
+                });
+                html += '</div>';
+            }
+            
+            if (docSources.length === 0 && testSources.length === 0) {
+                html += '<p class="text-muted mb-0">No relevant sources found in the knowledge base.</p>';
+            }
+            
+            html += '</div>';
+            html += '</div>';
+            html += '</div>';
+            html += '</div>';
         }
         
-        if (data.generated_tests) {
-            html += '<div class="mb-4">';
-            html += '<h6><i class="fas fa-code me-2"></i>Generated Test Cases</h6>';
+        // Analysis Section
+        if (data.analysis) {
+            html += '<div class="row mb-4">';
+            html += '<div class="col-12">';
+            html += '<div class="card border-info">';
+            html += '<div class="card-header bg-info text-white">';
+            html += '<h6 class="mb-0"><i class="fas fa-chart-line me-2"></i>AI Analysis</h6>';
+            html += '</div>';
+            html += '<div class="card-body">';
             
-            if (data.generated_tests.test_cases) {
-                html += '<div class="mb-3">';
-                html += '<h7><strong>Test Cases:</strong></h7>';
+            html += '<div class="row text-center mb-3">';
+            html += '<div class="col-md-3">';
+            html += '<div class="p-3 border rounded">';
+            html += `<div class="fs-1 ${data.analysis.existing_functionality ? 'text-success' : 'text-warning'}">`;
+            html += `<i class="fas fa-${data.analysis.existing_functionality ? 'check' : 'question'}-circle"></i>`;
+            html += '</div>';
+            html += '<small class="text-muted">Existing Functionality</small>';
+            html += `<div class="fw-bold">${data.analysis.existing_functionality ? 'Found' : 'Not Found'}</div>`;
+            html += '</div>';
+            html += '</div>';
+            
+            html += '<div class="col-md-3">';
+            html += '<div class="p-3 border rounded">';
+            html += `<div class="fs-1 ${data.analysis.existing_tests ? 'text-success' : 'text-warning'}">`;
+            html += `<i class="fas fa-${data.analysis.existing_tests ? 'check' : 'question'}-circle"></i>`;
+            html += '</div>';
+            html += '<small class="text-muted">Existing Tests</small>';
+            html += `<div class="fw-bold">${data.analysis.existing_tests ? 'Found' : 'Not Found'}</div>`;
+            html += '</div>';
+            html += '</div>';
+            
+            html += '<div class="col-md-3">';
+            html += '<div class="p-3 border rounded">';
+            html += `<div class="fs-1 ${data.analysis.needs_new_tests ? 'text-primary' : 'text-secondary'}">`;
+            html += `<i class="fas fa-${data.analysis.needs_new_tests ? 'plus' : 'minus'}-circle"></i>`;
+            html += '</div>';
+            html += '<small class="text-muted">New Tests Needed</small>';
+            html += `<div class="fw-bold">${data.analysis.needs_new_tests ? 'Yes' : 'No'}</div>`;
+            html += '</div>';
+            html += '</div>';
+            
+            html += '<div class="col-md-3">';
+            html += '<div class="p-3 border rounded">';
+            html += `<div class="fs-1 ${data.analysis.needs_test_updates ? 'text-warning' : 'text-secondary'}">`;
+            html += `<i class="fas fa-${data.analysis.needs_test_updates ? 'edit' : 'check'}-circle"></i>`;
+            html += '</div>';
+            html += '<small class="text-muted">Updates Needed</small>';
+            html += `<div class="fw-bold">${data.analysis.needs_test_updates ? 'Yes' : 'No'}</div>`;
+            html += '</div>';
+            html += '</div>';
+            html += '</div>';
+            
+            if (data.analysis.recommendations && data.analysis.recommendations.length > 0) {
+                html += '<div class="mt-3">';
+                html += '<h7><i class="fas fa-lightbulb me-2 text-warning"></i>AI Recommendations</h7>';
+                html += '<ul class="mt-2">';
+                data.analysis.recommendations.forEach(rec => {
+                    html += `<li class="mb-1">${rec}</li>`;
+                });
+                html += '</ul>';
+                html += '</div>';
+            }
+            
+            html += '</div>';
+            html += '</div>';
+            html += '</div>';
+            html += '</div>';
+        }
+          // Generated Tests Section
+        if (data.generated_tests) {
+            html += '<div class="row mb-4">';
+            html += '<div class="col-12">';
+            html += '<div class="card border-success">';
+            html += '<div class="card-header bg-success text-white">';
+            html += '<h6 class="mb-0"><i class="fas fa-code me-2"></i>Generated Test Cases</h6>';
+            html += '</div>';
+            html += '<div class="card-body">';
+            
+            // Jira Integration Status
+            if (data.jira_update_status) {
+                html += '<div class="alert alert-' + (data.jira_update_status.success ? 'success' : 'danger') + ' mb-3">';
+                html += '<div class="d-flex align-items-center">';
+                html += '<i class="fas fa-' + (data.jira_update_status.success ? 'check-circle' : 'exclamation-triangle') + ' me-3 fs-4"></i>';
+                html += '<div>';
+                html += '<h6 class="mb-1">Jira Integration Status</h6>';
+                html += '<p class="mb-0">' + data.jira_update_status.message + '</p>';
+                if (data.jira_update_status.issue_key) {
+                    html += '<small class="text-muted">Issue Key: ' + data.jira_update_status.issue_key + '</small>';
+                }
+                html += '</div>';
+                html += '</div>';
+                html += '</div>';
+            }
+            
+            if (data.generated_tests.test_cases && data.generated_tests.test_cases.length > 0) {
+                html += '<div class="mb-4">';
+                html += '<div class="d-flex justify-content-between align-items-center mb-3">';
+                html += `<h7><i class="fas fa-list me-2"></i>Test Cases Created (${data.generated_tests.test_cases.length})</h7>`;
+                if (data.jira_update_status && data.jira_update_status.success) {
+                    html += '<span class="badge bg-success fs-6"><i class="fas fa-check me-1"></i>Updated in Jira</span>';
+                } else {
+                    html += '<span class="badge bg-warning fs-6"><i class="fas fa-exclamation me-1"></i>Not Updated in Jira</span>';
+                }
+                html += '</div>';
+                
                 data.generated_tests.test_cases.forEach((testCase, index) => {
-                    html += '<div class="card mt-2">';
-                    html += '<div class="card-body p-3">';
-                    html += `<h8><strong>${testCase.name || 'Test Case ' + (index + 1)}</strong></h8>`;
-                    html += `<p class="mb-2">${testCase.description || 'No description'}</p>`;
-                    if (testCase.steps) {
-                        html += '<p><strong>Steps:</strong></p>';
-                        html += '<ol>';
+                    html += '<div class="card mt-3">';
+                    html += '<div class="card-header bg-light d-flex justify-content-between align-items-center">';
+                    html += `<h8 class="mb-0"><strong>${testCase.name || 'Test Case ' + (index + 1)}</strong></h8>`;
+                    html += `<span class="badge bg-primary">TC-${index + 1}</span>`;
+                    html += '</div>';
+                    html += '<div class="card-body">';
+                    html += `<p class="mb-3">${testCase.description || 'No description'}</p>`;
+                    
+                    if (testCase.steps && testCase.steps.length > 0) {
+                        html += '<div class="mb-3">';
+                        html += '<strong><i class="fas fa-list-ol me-2"></i>Test Steps:</strong>';
+                        html += '<ol class="mt-2">';
                         testCase.steps.forEach(step => {
-                            html += `<li>${step}</li>`;
+                            html += `<li class="mb-1">${step}</li>`;
                         });
                         html += '</ol>';
+                        html += '</div>';
                     }
+                    
                     if (testCase.expected_result) {
-                        html += `<p><strong>Expected Result:</strong> ${testCase.expected_result}</p>`;
+                        html += '<div>';
+                        html += '<strong><i class="fas fa-bullseye me-2"></i>Expected Result:</strong>';
+                        html += `<p class="mt-2 p-2 bg-light rounded">${testCase.expected_result}</p>`;
+                        html += '</div>';
                     }
-                    html += '</div></div>';
+                    html += '</div>';
+                    html += '</div>';
                 });
                 html += '</div>';
             }
             
             if (data.generated_tests.test_code) {
                 html += '<div class="mb-3">';
-                html += '<h7><strong>Test Code:</strong></h7>';
-                html += '<pre class="bg-dark text-light p-3 rounded"><code>';
+                html += '<div class="d-flex justify-content-between align-items-center mb-2">';
+                html += '<h7><i class="fas fa-file-code me-2"></i>Generated Test Code</h7>';
+                html += '<button class="btn btn-outline-secondary btn-sm" onclick="copyTestCode()">Copy Code</button>';
+                html += '</div>';
+                html += '<pre id="testCode" class="bg-dark text-light p-3 rounded" style="max-height: 400px; overflow-y: auto;"><code>';
                 html += escapeHtml(data.generated_tests.test_code);
                 html += '</code></pre>';
                 html += '</div>';
             }
             
-            html += '<div class="alert alert-success">';
-            html += '<i class="fas fa-check-circle me-2"></i>';
-            html += 'Test cases have been generated and updated in your Jira project!';
+            if (data.generated_tests.file_name) {
+                html += '<div class="alert alert-info">';
+                html += '<i class="fas fa-file me-2"></i>';
+                html += `<strong>Suggested File Name:</strong> ${data.generated_tests.file_name}`;
+                html += '</div>';
+            }
+            
+            html += '</div>';
+            html += '</div>';
+            html += '</div>';
             html += '</div>';
         }
         
+        // Message Section
         if (data.message) {
-            html += `<div class="alert alert-info">${data.message}</div>`;
+            html += '<div class="row">';
+            html += '<div class="col-12">';
+            html += `<div class="alert alert-info">`;
+            html += '<i class="fas fa-info-circle me-2"></i>';
+            html += data.message;
+            html += '</div>';
+            html += '</div>';
+            html += '</div>';
         }
         
         resultsContent.innerHTML = html;
@@ -374,12 +573,45 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
         activity.innerHTML = newActivity + activity.innerHTML;
     }
-    
-    function escapeHtml(text) {
+      function escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
     }
+    
+    // Global function for copying test code
+    window.copyTestCode = function() {
+        const testCodeElement = document.getElementById('testCode');
+        const textToCopy = testCodeElement.textContent;
+        
+        navigator.clipboard.writeText(textToCopy).then(function() {
+            showNotification('Test code copied to clipboard!', 'success');
+        }).catch(function(err) {
+            console.error('Failed to copy text: ', err);
+            showNotification('Failed to copy test code', 'error');
+        });
+    };
+    
+    // Global function for showing notifications
+    window.showNotification = function(message, type) {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show position-fixed`;
+        notification.style.cssText = 'top: 20px; right: 20px; z-index: 1050; min-width: 300px;';
+        notification.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Auto remove after 3 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 3000);
+    };
     
     // Global function for refresh button
     window.refreshStatus = loadSystemStatus;

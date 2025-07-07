@@ -1,147 +1,111 @@
 {% extends "base.html" %}
 
-{% block title %}Select Jira Project - Agentic RAG{% endblock %}
+{% block title %}Select Jira Project - Agentic RAG System{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-5 pt-4">
+<div class="container-fluid py-4">
     <div class="row justify-content-center">
-        <div class="col-lg-8">
-            <div class="card shadow-lg border-0 rounded-4">
-                <div class="card-header bg-gradient-primary text-white text-center py-4">
-                    <h2 class="mb-0">
-                        <i class="fas fa-tasks me-3"></i>
-                        Select Jira Project
-                    </h2>
-                    <p class="mb-0 mt-2 opacity-75">Choose a Jira project for test generation</p>
+        <div class="col-lg-10">
+            <div class="card shadow-lg border-0">
+                <div class="card-header bg-gradient-primary text-white py-3">
+                    <h4 class="mb-0">
+                        <i class="fas fa-tasks me-2"></i>
+                        Select Your Jira Project
+                    </h4>
+                    <p class="mb-0 opacity-75">Choose a project to generate test cases for</p>
                 </div>
-                <div class="card-body p-5">
-                    {% if sites %}
-                    <form id="jiraProjectForm" method="post" action="{{ url_for('process_jira_selection') }}">
-                        <div class="mb-4">
-                            <label for="jira_site" class="form-label h5">
-                                <i class="fas fa-building me-2 text-primary"></i>
-                                Select Jira Site
-                            </label>
-                            <select class="form-select form-select-lg" id="jira_site" name="jira_site" required>
-                                <option value="">Choose a Jira site...</option>
-                                {% for site in sites %}
-                                <option value="{{ site.url }}" data-site-id="{{ site.id }}">
-                                    {{ site.name }} ({{ site.url }})
-                                </option>
-                                {% endfor %}
-                            </select>
+                
+                <div class="card-body p-4">
+                    {% if projects %}
+                    <div class="row g-3">
+                        {% for project in projects %}
+                        <div class="col-lg-6 col-xl-4">
+                            <div class="card h-100 border border-2 project-card">
+                                <div class="card-body d-flex flex-column">
+                                    <div class="d-flex align-items-start mb-3">
+                                        <div class="avatar-sm bg-primary-subtle rounded me-3">
+                                            <i class="fas fa-project-diagram text-primary"></i>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <h6 class="card-title mb-1 fw-bold">{{ project.name }}</h6>
+                                            <p class="text-muted small mb-2">
+                                                <i class="fas fa-key me-1"></i>{{ project.key }}
+                                            </p>
+                                            <p class="text-muted small mb-0">
+                                                <i class="fas fa-server me-1"></i>{{ project.site_name }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    
+                                    {% if project.description %}
+                                    <p class="card-text text-muted small mb-3 flex-grow-1">
+                                        {{ project.description[:100] }}{% if project.description|length > 100 %}...{% endif %}
+                                    </p>
+                                    {% else %}
+                                    <p class="card-text text-muted small mb-3 flex-grow-1 fst-italic">
+                                        No description available
+                                    </p>
+                                    {% endif %}
+                                    
+                                    <div class="mt-auto">
+                                        <form method="POST" action="{{ url_for('process_jira_selection') }}" class="d-inline">
+                                            <input type="hidden" name="jira_project" value="{{ project.key }}">
+                                            <input type="hidden" name="jira_site_url" value="{{ project.site_url }}">
+                                            <button type="submit" class="btn btn-primary btn-sm w-100">
+                                                <i class="fas fa-check me-1"></i>
+                                                Select Project
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-
-                        <div class="mb-4" id="projectsSection" style="display: none;">
-                            <label for="jira_project" class="form-label h5">
-                                <i class="fas fa-project-diagram me-2 text-success"></i>
-                                Select Project
-                            </label>
-                            <select class="form-select form-select-lg" id="jira_project" name="jira_project">
-                                <option value="">Loading projects...</option>
-                            </select>
-                        </div>
-
-                        <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-success btn-lg" id="submitBtn" disabled>
-                                <i class="fas fa-arrow-right me-2"></i>
-                                Continue to Test Generation
-                            </button>
-                        </div>
-                    </form>
+                        {% endfor %}
+                    </div>
                     {% else %}
-                    <div class="text-center">
-                        <div class="alert alert-warning">
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            No Jira sites found. Please check your authentication.
+                    <div class="text-center py-5">
+                        <div class="mb-4">
+                            <i class="fas fa-exclamation-triangle text-warning" style="font-size: 4rem;"></i>
                         </div>
+                        <h5 class="text-muted mb-3">No Projects Found</h5>
+                        <p class="text-muted">
+                            We couldn't find any Jira projects in your accessible sites. 
+                            Please make sure you have access to at least one Jira project.
+                        </p>
                         <a href="{{ url_for('jira_auth') }}" class="btn btn-primary">
-                            <i class="fas fa-redo me-2"></i>
-                            Retry Authentication
+                            <i class="fas fa-redo me-1"></i>
+                            Try Again
                         </a>
                     </div>
                     {% endif %}
-
-                    <div class="text-center mt-4">
-                        <a href="{{ url_for('login') }}" class="btn btn-outline-secondary">
-                            <i class="fas fa-arrow-left me-2"></i>
-                            Back to Login
-                        </a>
-                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<div class="modal fade" id="loadingModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-body text-center p-4">
-                <div class="spinner-border text-primary mb-3" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <h5>Loading Projects...</h5>
-                <p class="text-muted mb-0">Please wait while we fetch your Jira projects.</p>
-            </div>
-        </div>
-    </div>
-</div>
-{% endblock %}
+<style>
+.project-card {
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
 
-{% block extra_js %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const siteSelect = document.getElementById('jira_site');
-    const projectSelect = document.getElementById('jira_project');
-    const projectsSection = document.getElementById('projectsSection');
-    const submitBtn = document.getElementById('submitBtn');
-    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+.project-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
+    border-color: var(--bs-primary) !important;
+}
 
-    siteSelect.addEventListener('change', function() {
-        const selectedOption = this.options[this.selectedIndex];
-        const siteUrl = this.value;
-        const siteId = selectedOption.dataset.siteId;
+.avatar-sm {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 
-        if (siteUrl && siteId) {
-            loadingModal.show();
-            
-            fetch('{{ url_for("get_projects") }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `site_url=${encodeURIComponent(siteUrl)}&site_id=${encodeURIComponent(siteId)}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                loadingModal.hide();
-                if (data.projects) {
-                    projectSelect.innerHTML = '<option value="">Choose a project...</option>';
-                    data.projects.forEach(project => {
-                        const option = document.createElement('option');
-                        option.value = project.key;
-                        option.textContent = `${project.name} (${project.key})`;
-                        projectSelect.appendChild(option);
-                    });
-                    projectsSection.style.display = 'block';
-                } else {
-                    showNotification('Error loading projects: ' + (data.error || 'Unknown error'), 'error');
-                }
-            })
-            .catch(error => {
-                loadingModal.hide();
-                showNotification('Error loading projects: ' + error.message, 'error');
-            });
-        } else {
-            projectsSection.style.display = 'none';
-            submitBtn.disabled = true;
-        }
-    });
-
-    projectSelect.addEventListener('change', function() {
-        submitBtn.disabled = !this.value;
-    });
-});
-</script>
+.bg-gradient-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+</style>
 {% endblock %}

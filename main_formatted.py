@@ -140,6 +140,37 @@ class GitHubService:
             print(f"Error fetching repos: {e}")
             return []
 
+    def extract_docx_content(self, base64_content: str) -> str:
+        """Extract text content from DOCX file"""
+        try:
+            import io
+            # Decode base64 content
+            docx_bytes = base64.b64decode(base64_content)
+            
+            # Create a BytesIO object to simulate a file
+            docx_stream = io.BytesIO(docx_bytes)
+            
+            # Use python-docx to extract text
+            doc = Document(docx_stream)
+            
+            # Extract all text from paragraphs
+            full_text = []
+            for paragraph in doc.paragraphs:
+                if paragraph.text.strip():  # Only add non-empty paragraphs
+                    full_text.append(paragraph.text.strip())
+            
+            # Also extract text from tables if any
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            full_text.append(cell.text.strip())
+            
+            return '\n\n'.join(full_text)
+        except Exception as e:
+            print(f"Error extracting DOCX content: {e}")
+            return ""
+
     def get_repo_contents(self, repo_name: str, path: str = "") -> Dict[str, Any]:
         """Get repository contents for documentation and tests"""
         try:
@@ -163,6 +194,15 @@ class GitHubService:
                             elif item.name.endswith(('.md', '.txt', '.rst', '.doc')):
                                 content = base64.b64decode(item.content).decode('utf-8')
                                 contents['docs'][item.path] = content
+                            elif item.name.endswith('.docx'):
+                                # Handle DOCX files
+                                print(f"Processing DOCX file: {item.path}")
+                                docx_content = self.extract_docx_content(item.content)
+                                if docx_content:
+                                    contents['docs'][item.path] = docx_content
+                                    print(f"Successfully extracted {len(docx_content)} characters from {item.path}")
+                                else:
+                                    print(f"No content extracted from DOCX file: {item.path}")
                         except Exception as e:
                             print(f"Error processing file {item.path}: {e}")
                     elif item.type == "dir" and not item.name.startswith('.'):
@@ -603,21 +643,27 @@ class AgenticRAG:
                 test_generation_result = self.generate_tests(query, doc_results, test_results, analysis)
 
                 # Step 4: Update test repository if needed
+                jira_update_status = None
                 if (user_session.jira_token and user_session.jira_url and 
                     user_session.selected_jira_project):
-                    self.update_jira_tests(user_session, test_generation_result)
+                    jira_update_status = self.update_jira_tests(user_session, test_generation_result)
                 else:
                     print("Jira credentials or project not selected, skipping Jira test update.")
 
                 return {
                     'analysis': analysis,
                     'generated_tests': test_generation_result,
+                    'doc_results': doc_results,
+                    'test_results': test_results,
+                    'jira_update_status': jira_update_status,
                     'updated_embeddings': True
                 }
             else:
                 return {
                     'analysis': analysis,
                     'existing_tests': test_results,
+                    'doc_results': doc_results,
+                    'test_results': test_results,
                     'message': 'Existing tests already cover this requirement'
                 }
         except Exception as e:
@@ -662,11 +708,54 @@ class AgenticRAG:
         try:
             jira_service = JiraService(user_session.jira_url, user_session.jira_token)
             project_key = user_session.selected_jira_project
+            
             # Call the new method in JiraService to handle the creation/update logic
-            jira_service.create_or_update_test_case(project_key, test_result)
-            print(f"Attempted to update/create Jira test case in project: {project_key}")
+            issue_key = jira_service.create_or_update_test_case(project_key, test_result)
+            
+            if issue_key:
+                # Re-embed the newly created/updated test case
+                test_content = f"{test_result.get('file_name', 'Generated Test Case')}\n{test_result.get('test_code', '')}"
+                
+                # Create data structure for embedding
+                new_test_data = {
+                    'tests': {
+                        f"jira:{issue_key}": test_content
+                    }
+                }
+                
+                # Update embeddings and graph with new test case
+                self.embedding_rag.update_embeddings(
+                    new_test_data, 
+                    f"jira:{user_session.selected_jira_project}", 
+                    TESTS_COLLECTION
+                )
+                self.graph_rag.update_knowledge(
+                    new_test_data, 
+                    f"jira:{user_session.selected_jira_project}"
+                )
+                
+                print(f"Successfully created/updated and embedded Jira test case {issue_key} in project: {project_key}")
+                return {
+                    'success': True,
+                    'issue_key': issue_key,
+                    'project_key': project_key,
+                    'message': f'Successfully created/updated test case {issue_key}'
+                }
+            else:
+                print(f"Failed to create/update Jira test case in project: {project_key}")
+                return {
+                    'success': False,
+                    'project_key': project_key,
+                    'message': f'Failed to create/update test case in project {project_key}'
+                }
+                
         except Exception as e:
             print(f"Error updating Jira test repository: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': f'Error updating Jira test repository: {str(e)}'
+            }
 
 
 # Flask Application
@@ -762,8 +851,9 @@ def jira_callback():
     access_token = token_data.get('access_token')
     
     if access_token:
-        # Store in session
-        session['user_id'] = str(uuid.uuid4())
+        # Store in session - create user_id if doesn't exist
+        if 'user_id' not in session:
+            session['user_id'] = str(uuid.uuid4())
         session['jira_token'] = access_token
         flash('Jira authentication successful')
         return redirect(url_for('select_jira_project'))
@@ -787,17 +877,40 @@ def select_repo():
 @app.route("/select-jira-project")
 @login_required
 def select_jira_project():
-    """Select Jira project"""
+    """Select Jira project - similar to GitHub repo selection"""
     if 'jira_token' not in session:
         return redirect(url_for('jira_auth'))
     
-    # Get user's Jira sites
-    sites_response = requests.get(
-        'https://api.atlassian.com/oauth/token/accessible-resources',
-        headers={'Authorization': f'Bearer {session["jira_token"]}'}
-    )
-    sites = sites_response.json()
-    return render_template("select_jira_project.html", sites=sites)
+    try:
+        # Get user's Jira sites
+        sites_response = requests.get(
+            'https://api.atlassian.com/oauth/token/accessible-resources',
+            headers={'Authorization': f'Bearer {session["jira_token"]}'}
+        )
+        sites = sites_response.json()
+        
+        # Fetch all projects from all sites
+        all_projects = []
+        for site in sites:
+            try:
+                projects_response = requests.get(
+                    f'{site["url"]}/rest/api/3/project',
+                    headers={'Authorization': f'Bearer {session["jira_token"]}'}
+                )
+                if projects_response.status_code == 200:
+                    projects = projects_response.json()
+                    for project in projects:
+                        project['site_url'] = site['url']
+                        project['site_name'] = site['name']
+                        all_projects.append(project)
+            except Exception as e:
+                print(f"Error fetching projects from site {site['url']}: {e}")
+                continue
+        
+        return render_template("select_jira_project.html", projects=all_projects)
+    except Exception as e:
+        flash(f'Error fetching Jira projects: {str(e)}')
+        return redirect(url_for('login'))
 
 
 @app.route("/process-selections", methods=["POST"])
@@ -845,16 +958,14 @@ def process_selections():
 @app.route("/process-jira-selection", methods=["POST"])
 @login_required  
 def process_jira_selection():
-    """Process Jira project selection"""
-    jira_site = request.form.get('jira_site')
-    jira_project = request.form.get('jira_project')
+    """Process Jira project selection - similar to GitHub repo selection"""
+    jira_project_key = request.form.get('jira_project')
+    jira_site_url = request.form.get('jira_site_url')
 
-    if jira_site:
-        session['jira_url'] = jira_site
-        flash(f'Jira site selected: {jira_site}')
-    if jira_project:
-        session['selected_jira_project'] = jira_project
-        flash(f'Jira project selected: {jira_project}')
+    if jira_project_key and jira_site_url:
+        session['selected_jira_project'] = jira_project_key
+        session['jira_url'] = jira_site_url
+        flash(f'Jira project selected: {jira_project_key}')
 
         # Start background process to load Jira data
         def load_jira_data():
@@ -893,6 +1004,7 @@ def process_jira_selection():
         flash('Jira data loading started in background. You can now use the test generation system.')
         return redirect(url_for('jira_dashboard'))
 
+    flash('Please select a Jira project')
     return redirect(url_for('select_jira_project'))
 
 
