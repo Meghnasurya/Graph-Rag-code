@@ -686,12 +686,13 @@ class AgenticRAG:
                     'analysis': analysis,
                     'existing_tests': test_results,
                     'doc_results': doc_results,
-                    'test_results': test_results,
-                    'message': 'Existing tests already cover this requirement'
+                    'test_results': test_results,                    'message': 'Existing tests already cover this requirement'
                 }
         except Exception as e:
             print(f"Error processing query: {e}")
-            return {'error': str(e)}    def generate_tests(self, query: str, doc_context: List[Dict], test_context: List[Dict], analysis: Dict) -> Dict:
+            return {'error': str(e)}
+
+    def generate_tests(self, query: str, doc_context: List[Dict], test_context: List[Dict], analysis: Dict) -> Dict:
         """Generate new tests based on context and analysis"""
         try:
             generation_prompt = f"""
@@ -775,15 +776,8 @@ class AgenticRAG:
                     "expected_result": "Test should pass successfully"
                 }
             ],
-            "test_code": f"import unittest\n\nclass Test{safe_name.title().replace('_', '')}(unittest.TestCase):\n    def test_{safe_name}(self):\n        \"\"\"Test implementation for: {query}\"\"\"\n        # TODO: Implement actual test logic\n        self.assertTrue(True)  # Replace with actual test logic\n\nif __name__ == '__main__':\n    unittest.main()",
-            "file_name": f"test_{safe_name}.py"
+            "test_code": f"import unittest\n\nclass Test{safe_name.title().replace('_', '')}(unittest.TestCase):\n    def test_{safe_name}(self):\n        \"\"\"Test implementation for: {query}\"\"\"\n        # TODO: Implement actual test logic\n        self.assertTrue(True)  # Replace with actual test logic\n\nif __name__ == '__main__':\n    unittest.main()",            "file_name": f"test_{safe_name}.py"
         }
-            return {
-                'error': str(e),
-                'test_cases': [],
-                'test_code': '',
-                'file_name': 'test_fallback.py'
-            }
 
     def update_jira_tests(self, user_session: UserSession, test_result: Dict):
         """
