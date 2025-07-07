@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block title %}Jira Test Generation - Agentic RAG{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-5 pt-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card bg-gradient-primary text-white border-0 rounded-4">
+                <div class="card-body p-4">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h2 class="mb-1">
+                                <i class="fas fa-robot me-3"></i>
+                                Jira Test Generation
+                            </h2>
+                            <p class="mb-0 opacity-75">
+                                Connected to project: <strong>{{ project }}</strong>
+                            </p>
+                        </div>
+                        <div class="col-md-4 text-md-end">
+                            <div class="d-flex flex-column align-items-md-end">
+                                <div class="status-indicator mb-2">
+                                    <span class="badge bg-success fs-6">
+                                        <i class="fas fa-check-circle me-1"></i>
+                                        Jira Connected
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <!-- Query Interface -->
+            <div class="card shadow-sm border-0 rounded-4 mb-4">
+                <div class="card-header bg-light border-0 py-3">
+                    <h5 class="mb-0">
+                        <i class="fas fa-pencil-alt me-2 text-primary"></i>
+                        Describe What You Want to Test
+                    </h5>
+                </div>
+                <div class="card-body p-4">
+                    <form id="queryForm">
+                        <div class="mb-3">
+                            <label for="queryInput" class="form-label">
+                                Enter your test requirement:
+                            </label>
+                            <textarea 
+                                class="form-control form-control-lg" 
+                                id="queryInput" 
+                                name="query" 
+                                rows="4" 
+                                placeholder="Example: Create test cases for user authentication with email and password validation, including edge cases for invalid credentials and account lockout scenarios..."
+                                required></textarea>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg" id="generateBtn">
+                                <i class="fas fa-magic me-2"></i>
+                                Generate Test Cases
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loadingSection" class="card shadow-sm border-0 rounded-4 mb-4" style="display: none;">
+                <div class="card-body text-center p-5">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5>Generating Test Cases...</h5>
+                    <p class="text-muted mb-0">Analyzing existing tests and creating comprehensive test cases for your requirements.</p>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="resultsSection" style="display: none;">
+                <div class="card shadow-sm border-0 rounded-4 mb-4">
+                    <div class="card-header bg-success text-white border-0 py-3">
+                        <h5 class="mb-0">
+                            <i class="fas fa-check-circle me-2"></i>
+                            Generated Test Cases
+                        </h5>
+                    </div>
+                    <div class="card-body p-4">
+                        <div id="resultsContent">
+                            <!-- Results will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Section -->
+            <div id="errorSection" class="card shadow-sm border-0 rounded-4 mb-4" style="display: none;">
+                <div class="card-header bg-danger text-white border-0 py-3">
+                    <h5 class="mb-0">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Error
+                    </h5>
+                </div>
+                <div class="card-body p-4">
+                    <div id="errorContent">
+                        <!-- Error message will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const queryForm = document.getElementById('queryForm');
+    const queryInput = document.getElementById('queryInput');
+    const generateBtn = document.getElementById('generateBtn');
+    const loadingSection = document.getElementById('loadingSection');
+    const resultsSection = document.getElementById('resultsSection');
+    const errorSection = document.getElementById('errorSection');
+
+    // Form submission
+    queryForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const query = queryInput.value.trim();
+        if (!query) {
+            showError('Please enter a test requirement');
+            return;
+        }
+        
+        // Show loading state
+        hideAllSections();
+        loadingSection.style.display = 'block';
+        generateBtn.disabled = true;
+        
+        // Submit query
+        fetch('/jira-query', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `query=${encodeURIComponent(query)}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            hideAllSections();
+            generateBtn.disabled = false;
+            
+            if (data.error) {
+                showError(data.error);
+            } else {
+                showResults(data);
+            }
+        })
+        .catch(error => {
+            hideAllSections();
+            generateBtn.disabled = false;
+            showError('Failed to process query: ' + error.message);
+        });
+    });
+
+    function hideAllSections() {
+        loadingSection.style.display = 'none';
+        resultsSection.style.display = 'none';
+        errorSection.style.display = 'none';
+    }
+
+    function showError(message) {
+        document.getElementById('errorContent').innerHTML = `
+            <div class="alert alert-danger">
+                <strong>Error:</strong> ${message}
+            </div>
+        `;
+        errorSection.style.display = 'block';
+    }
+
+    function showResults(data) {
+        let html = '';
+        
+        // Show analysis
+        if (data.analysis) {
+            html += `
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="fas fa-search me-2"></i>Analysis</h6>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-unstyled">
+                            <li><strong>Existing functionality:</strong> ${data.analysis.existing_functionality ? 'Yes' : 'No'}</li>
+                            <li><strong>Existing tests:</strong> ${data.analysis.existing_tests ? 'Yes' : 'No'}</li>
+                            <li><strong>Needs new tests:</strong> ${data.analysis.needs_new_tests ? 'Yes' : 'No'}</li>
+                        </ul>
+                        ${data.analysis.recommendations ? '<strong>Recommendations:</strong><ul>' + data.analysis.recommendations.map(r => '<li>' + r + '</li>').join('') + '</ul>' : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Show generated tests
+        if (data.generated_tests && data.generated_tests.test_cases) {
+            html += `
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="fas fa-flask me-2"></i>Generated Test Cases</h6>
+                    </div>
+                    <div class="card-body">
+                        ${data.generated_tests.test_cases.map(tc => `
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h6 class="card-title">${tc.name || 'Test Case'}</h6>
+                                    <p class="card-text">${tc.description || 'No description'}</p>
+                                    ${tc.steps ? '<strong>Steps:</strong><ol>' + tc.steps.map(step => '<li>' + step + '</li>').join('') + '</ol>' : ''}
+                                    ${tc.expected_result ? '<strong>Expected Result:</strong> ' + tc.expected_result : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Show test code
+        if (data.generated_tests && data.generated_tests.test_code) {
+            html += `
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0"><i class="fas fa-code me-2"></i>Generated Test Code</h6>
+                        <button class="btn btn-sm btn-outline-primary" onclick="copyTestCode()">
+                            <i class="fas fa-copy me-1"></i>Copy Code
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <pre id="testCode" class="bg-light p-3 rounded"><code>${data.generated_tests.test_code}</code></pre>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Show Jira update status
+        if (data.jira_update_status) {
+            const statusClass = data.jira_update_status.success ? 'success' : 'warning';
+            html += `
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="fas fa-upload me-2"></i>Jira Update Status</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-${statusClass}">
+                            <strong>Status:</strong> ${data.jira_update_status.message}
+                            ${data.jira_update_status.issue_key ? '<br><strong>Issue:</strong> ' + data.jira_update_status.issue_key : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        document.getElementById('resultsContent').innerHTML = html;
+        resultsSection.style.display = 'block';
+    }
+
+    // Global function for copying test code
+    window.copyTestCode = function() {
+        const testCodeElement = document.getElementById('testCode');
+        const textToCopy = testCodeElement.textContent;
+        
+        navigator.clipboard.writeText(textToCopy).then(function() {
+            showNotification('Test code copied to clipboard!', 'success');
+        }).catch(function(err) {
+            console.error('Failed to copy text: ', err);
+            showNotification('Failed to copy test code', 'error');
+        });
+    };
+
+    // Global function for showing notifications
+    function showNotification(message, type) {
+        const notification = document.createElement('div');
+        notification.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show position-fixed`;
+        notification.style.cssText = 'top: 20px; right: 20px; z-index: 1050; min-width: 300px;';
+        notification.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Auto remove after 3 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 3000);
+    }
+});
+</script>
+{% endblock %}

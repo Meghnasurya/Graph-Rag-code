@@ -663,9 +663,7 @@ class AgenticRAG:
 
             # Step 3: Generate or update tests based on analysis
             if analysis.get('needs_new_tests') or analysis.get('needs_test_updates'):
-                test_generation_result = self.generate_tests(query, doc_results, test_results, analysis)
-
-                # Step 4: Update test repository if needed
+                test_generation_result = self.generate_tests(query, doc_results, test_results, analysis)                # Step 4: Update test repository if needed
                 jira_update_status = None
                 if (user_session.jira_token and user_session.jira_url and 
                     user_session.selected_jira_project):
@@ -686,7 +684,8 @@ class AgenticRAG:
                     'analysis': analysis,
                     'existing_tests': test_results,
                     'doc_results': doc_results,
-                    'test_results': test_results,                    'message': 'Existing tests already cover this requirement'
+                    'test_results': test_results,
+                    'message': 'Existing tests already cover this requirement'
                 }
         except Exception as e:
             print(f"Error processing query: {e}")
@@ -776,7 +775,8 @@ class AgenticRAG:
                     "expected_result": "Test should pass successfully"
                 }
             ],
-            "test_code": f"import unittest\n\nclass Test{safe_name.title().replace('_', '')}(unittest.TestCase):\n    def test_{safe_name}(self):\n        \"\"\"Test implementation for: {query}\"\"\"\n        # TODO: Implement actual test logic\n        self.assertTrue(True)  # Replace with actual test logic\n\nif __name__ == '__main__':\n    unittest.main()",            "file_name": f"test_{safe_name}.py"
+            "test_code": f"import unittest\n\nclass Test{safe_name.title().replace('_', '')}(unittest.TestCase):\n    def test_{safe_name}(self):\n        \"\"\"Test implementation for: {query}\"\"\"\n        # TODO: Implement actual test logic\n        self.assertTrue(True)  # Replace with actual test logic\n\nif __name__ == '__main__':\n    unittest.main()",
+            "file_name": f"test_{safe_name}.py"
         }
 
     def update_jira_tests(self, user_session: UserSession, test_result: Dict):
@@ -1154,15 +1154,13 @@ def process_jira_selection():
                     tests_count = agentic_rag.embedding_rag.update_embeddings(jira_data, f"jira:{user_session.selected_jira_project}", TESTS_COLLECTION)
                     print(f"Embedded {tests_count} Jira test chunks")                    
             except Exception as e:
-                print(f"Error loading Jira data: {str(e)}")
-
-        # Start background thread
+                print(f"Error loading Jira data: {str(e)}")        # Start background thread
         thread = Thread(target=load_jira_data)
         thread.start()
         
         flash('Jira data loading started in background. You can now generate test cases.')
-        # Redirect to Jira dashboard for query interface
-        return redirect(url_for('jira_dashboard'))
+        # Redirect directly to a simple text box interface
+        return redirect(url_for('jira_query_interface'))
     else:
         flash('Please select a valid Jira project')
         return redirect(url_for('select_jira_project'))
@@ -1184,6 +1182,19 @@ def jira_dashboard():
         return redirect(url_for('select_jira_project'))
     
     return render_template("jira_dashboard.html", 
+                         project=session.get('selected_jira_project'),
+                         jira_url=session.get('jira_url'))
+
+
+@app.route("/jira-query-interface")
+@login_required
+def jira_query_interface():
+    """Simple Jira query interface with just a text box"""
+    if 'jira_token' not in session or 'selected_jira_project' not in session:
+        flash('Please select a Jira project first')
+        return redirect(url_for('select_jira_project'))
+    
+    return render_template("jira_query_interface.html", 
                          project=session.get('selected_jira_project'),
                          jira_url=session.get('jira_url'))
 
