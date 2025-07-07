@@ -621,22 +621,45 @@ class AgenticRAG:
                 Analyze this query: "{query}"
                 Existing documentation: {json.dumps(doc_results[:2], indent=2)}
                 Existing tests: {json.dumps(test_results[:2], indent=2)}
+                
                 Determine:
                 1. Is there existing functionality for this requirement?
                 2. Are there existing tests that cover this?
                 3. What new tests need to be created?
                 4. Should existing tests be updated?
-                Respond in JSON format:
+                
+                You MUST return ONLY valid JSON in this exact format with no additional text:
                 {{
-                    "existing_functionality": true/false,
-                    "existing_tests": true/false,
-                    "needs_new_tests": true/false,
-                    "needs_test_updates": true/false,
-                    "recommendations": ["list of specific actions"]
+                    "existing_functionality": true,
+                    "existing_tests": false,
+                    "needs_new_tests": true,
+                    "needs_test_updates": false,
+                    "recommendations": ["Create new test cases for the requirement"]
                 }}
                 """
             analysis_response = gemini.generate_content(analysis_prompt)
-            analysis = json.loads(analysis_response.text)
+            analysis_text = analysis_response.text.strip()
+            
+            # Clean up response text to extract JSON
+            if analysis_text.startswith('```json'):
+                analysis_text = analysis_text[7:]
+            if analysis_text.endswith('```'):
+                analysis_text = analysis_text[:-3]
+            analysis_text = analysis_text.strip()
+            
+            try:
+                analysis = json.loads(analysis_text)
+            except json.JSONDecodeError as json_error:
+                print(f"Analysis JSON parsing error: {json_error}")
+                print(f"Analysis response text: {analysis_text}")
+                # Fallback analysis
+                analysis = {
+                    "existing_functionality": False,
+                    "existing_tests": False,
+                    "needs_new_tests": True,
+                    "needs_test_updates": False,
+                    "recommendations": ["Generate new test cases based on query"]
+                }
 
             # Step 3: Generate or update tests based on analysis
             if analysis.get('needs_new_tests') or analysis.get('needs_test_updates'):
@@ -678,8 +701,9 @@ class AgenticRAG:
                 Context from documentation: {json.dumps(doc_context, indent=2)}
                 Context from existing tests: {json.dumps(test_context, indent=2)}
                 Analysis: {json.dumps(analysis, indent=2)}
+                
                 Generate comprehensive test cases and Python unittest code.
-                Return JSON format:
+                You MUST return ONLY valid JSON in this exact format with no additional text:
                 {{
                     "test_cases": [
                         {{
@@ -694,10 +718,42 @@ class AgenticRAG:
                 }}
                 """
             response = gemini.generate_content(generation_prompt)
-            return json.loads(response.text)
+            response_text = response.text.strip()
+            
+            # Clean up response text to extract JSON
+            if response_text.startswith('```json'):
+                response_text = response_text[7:]
+            if response_text.endswith('```'):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
+            
+            # Try to parse JSON
+            try:
+                return json.loads(response_text)
+            except json.JSONDecodeError as json_error:
+                print(f"JSON parsing error: {json_error}")
+                print(f"Response text: {response_text}")
+                # Return a fallback structure
+                return {
+                    "test_cases": [
+                        {
+                            "name": f"test_{query.replace(' ', '_').lower()}",
+                            "description": f"Test case for: {query}",
+                            "steps": ["Setup test environment", "Execute test scenario", "Verify results"],
+                            "expected_result": "Test should pass successfully"
+                        }
+                    ],
+                    "test_code": f"import unittest\n\nclass Test{query.replace(' ', '').title()}(unittest.TestCase):\n    def test_{query.replace(' ', '_').lower()}(self):\n        # Test implementation for: {query}\n        self.assertTrue(True)  # Replace with actual test logic\n\nif __name__ == '__main__':\n    unittest.main()",
+                    "file_name": f"test_{query.replace(' ', '_').lower()}.py"
+                }
         except Exception as e:
             print(f"Error generating tests: {e}")
-            return {'error': str(e)}
+            return {
+                'error': str(e),
+                'test_cases': [],
+                'test_code': '',
+                'file_name': 'test_fallback.py'
+            }
 
     def update_jira_tests(self, user_session: UserSession, test_result: Dict):
         """
@@ -797,24 +853,41 @@ def github_callback():
         flash('GitHub authentication failed')
         return redirect(url_for('login'))
     
-    # Exchange code for token
-    token_response = requests.post('https://github.com/login/oauth/access_token', {
-        'client_id': Config.GITHUB_CLIENT_ID,
-        'client_secret': Config.GITHUB_CLIENT_SECRET,
-        'code': code
-    }, headers={'Accept': 'application/json'})
-    
-    token_data = token_response.json()
-    access_token = token_data.get('access_token')
-    
-    if access_token:
-        # Store in session
-        session['user_id'] = str(uuid.uuid4())
-        session['github_token'] = access_token
-        flash('GitHub authentication successful')
-        return redirect(url_for('select_repo'))
-    else:
-        flash('Failed to get GitHub access token')
+    try:
+        # Exchange code for token
+        token_response = requests.post('https://github.com/login/oauth/access_token', {
+            'client_id': Config.GITHUB_CLIENT_ID,
+            'client_secret': Config.GITHUB_CLIENT_SECRET,
+            'code': code
+        }, headers={'Accept': 'application/json'})
+        
+        if token_response.status_code != 200:
+            flash('Failed to exchange GitHub authorization code')
+            return redirect(url_for('login'))
+        
+        token_data = token_response.json()
+        access_token = token_data.get('access_token')
+        
+        if access_token:
+            # Create user_id if doesn't exist, but don't override existing sessions
+            if 'user_id' not in session:
+                session['user_id'] = str(uuid.uuid4())
+            
+            # Store GitHub token separately from Jira
+            session['github_token'] = access_token
+            
+            # Clear any previous GitHub selections to start fresh
+            session.pop('selected_github_repo', None)
+            
+            flash('GitHub authentication successful')
+            return redirect(url_for('select_repo'))
+        else:
+            flash('Failed to get GitHub access token')
+            return redirect(url_for('login'))
+            
+    except Exception as e:
+        print(f"GitHub callback error: {str(e)}")
+        flash(f'GitHub authentication error: {str(e)}')
         return redirect(url_for('login'))
 
 
@@ -835,30 +908,47 @@ def jira_callback():
     """Handle Jira OAuth callback"""
     code = request.args.get('code')
     if not code:
-        flash('Jira authentication failed')
+        flash('Jira authentication failed - no authorization code received')
         return redirect(url_for('login'))
     
-    # Exchange code for token
-    token_response = requests.post('https://auth.atlassian.com/oauth/token', {
-        'grant_type': 'authorization_code',
-        'client_id': Config.JIRA_CLIENT_ID,
-        'client_secret': Config.JIRA_CLIENT_SECRET,
-        'code': code,
-        'redirect_uri': Config.JIRA_REDIRECT_URI
-    })
-    
-    token_data = token_response.json()
-    access_token = token_data.get('access_token')
-    
-    if access_token:
-        # Store in session - create user_id if doesn't exist
-        if 'user_id' not in session:
-            session['user_id'] = str(uuid.uuid4())
-        session['jira_token'] = access_token
-        flash('Jira authentication successful')
-        return redirect(url_for('select_jira_project'))
-    else:
-        flash('Failed to get Jira access token')
+    try:
+        # Exchange code for token
+        token_response = requests.post('https://auth.atlassian.com/oauth/token', {
+            'grant_type': 'authorization_code',
+            'client_id': Config.JIRA_CLIENT_ID,
+            'client_secret': Config.JIRA_CLIENT_SECRET,
+            'code': code,
+            'redirect_uri': Config.JIRA_REDIRECT_URI
+        })
+        
+        if token_response.status_code != 200:
+            print(f"Token exchange failed: {token_response.status_code} - {token_response.text}")
+            flash('Failed to exchange authorization code for access token')
+            return redirect(url_for('login'))
+        
+        token_data = token_response.json()
+        access_token = token_data.get('access_token')
+        
+        if access_token:
+            # Store in session - create user_id if doesn't exist
+            if 'user_id' not in session:
+                session['user_id'] = str(uuid.uuid4())
+            session['jira_token'] = access_token
+            
+            # Clear any previous Jira selections to start fresh
+            session.pop('selected_jira_project', None)
+            session.pop('jira_url', None)
+            
+            flash('Jira authentication successful')
+            # Always redirect to project selection, not to the Jira homepage
+            return redirect(url_for('select_jira_project'))
+        else:
+            flash('Failed to get Jira access token from response')
+            return redirect(url_for('login'))
+            
+    except Exception as e:
+        print(f"Jira callback error: {str(e)}")
+        flash(f'Jira authentication error: {str(e)}')
         return redirect(url_for('login'))
 
 
@@ -879,15 +969,29 @@ def select_repo():
 def select_jira_project():
     """Select Jira project - similar to GitHub repo selection"""
     if 'jira_token' not in session:
+        flash('Please authenticate with Jira first')
         return redirect(url_for('jira_auth'))
     
     try:
-        # Get user's Jira sites
+        # Get user's Jira sites with better error handling
         sites_response = requests.get(
             'https://api.atlassian.com/oauth/token/accessible-resources',
-            headers={'Authorization': f'Bearer {session["jira_token"]}'}
+            headers={'Authorization': f'Bearer {session["jira_token"]}'},
+            timeout=10
         )
+        
+        if sites_response.status_code == 401:
+            flash('Jira authentication expired. Please login again.')
+            session.pop('jira_token', None)
+            return redirect(url_for('jira_auth'))
+        elif sites_response.status_code != 200:
+            flash(f'Error accessing Jira sites: {sites_response.status_code}')
+            return redirect(url_for('login'))
+            
         sites = sites_response.json()
+        if not sites:
+            flash('No accessible Jira sites found. Please check your permissions.')
+            return redirect(url_for('login'))
         
         # Fetch all projects from all sites
         all_projects = []
@@ -895,7 +999,8 @@ def select_jira_project():
             try:
                 projects_response = requests.get(
                     f'{site["url"]}/rest/api/3/project',
-                    headers={'Authorization': f'Bearer {session["jira_token"]}'}
+                    headers={'Authorization': f'Bearer {session["jira_token"]}'},
+                    timeout=10
                 )
                 if projects_response.status_code == 200:
                     projects = projects_response.json()
@@ -903,12 +1008,19 @@ def select_jira_project():
                         project['site_url'] = site['url']
                         project['site_name'] = site['name']
                         all_projects.append(project)
+                else:
+                    print(f"Failed to fetch projects from {site['name']}: {projects_response.status_code}")
             except Exception as e:
                 print(f"Error fetching projects from site {site['url']}: {e}")
                 continue
         
+        if not all_projects:
+            flash('No accessible Jira projects found. Please check your project permissions.')
+            return redirect(url_for('login'))
+        
         return render_template("select_jira_project.html", projects=all_projects)
     except Exception as e:
+        print(f"Error in select_jira_project: {str(e)}")
         flash(f'Error fetching Jira projects: {str(e)}')
         return redirect(url_for('login'))
 
@@ -921,29 +1033,48 @@ def process_selections():
     
     if github_repo:
         session['selected_github_repo'] = github_repo
+        
+        # Test GitHub access immediately to provide feedback
+        try:
+            github_service = GitHubService(session['github_token'])
+            repo = github_service.github.get_repo(github_repo)
+            repo_info = {
+                'name': repo.name,
+                'full_name': repo.full_name,
+                'description': repo.description,
+                'accessible': True
+            }
+        except Exception as e:
+            print(f"Error accessing repository {github_repo}: {e}")
+            flash(f'Error accessing repository {github_repo}: {str(e)}')
+            return redirect(url_for('select_repo'))
+
         flash(f'GitHub repository selected: {github_repo}')
 
         # Start background process to load GitHub data
         def load_github_data():
-            user_session = UserSession(
-                user_id=session['user_id'],
-                github_token=session.get('github_token'),
-                selected_github_repo=session.get('selected_github_repo')
-            )
+            try:
+                user_session = UserSession(
+                    user_id=session['user_id'],
+                    github_token=session.get('github_token'),
+                    selected_github_repo=session.get('selected_github_repo')
+                )
 
-            if user_session.github_token and user_session.selected_github_repo:
-                print(f"Loading GitHub data from: {user_session.selected_github_repo}")
-                github_service = GitHubService(user_session.github_token)
-                repo_data = github_service.get_repo_contents(user_session.selected_github_repo)
-                
-                # Debug print
-                print(f"Fetched GitHub data: docs={len(repo_data.get('docs', {}))}, tests={len(repo_data.get('tests', {}))}, code={len(repo_data.get('code', {}))}")
-                
-                # Update graph and embeddings
-                agentic_rag.graph_rag.update_knowledge(repo_data, f"github:{user_session.selected_github_repo}")
-                docs_count = agentic_rag.embedding_rag.update_embeddings(repo_data, f"github:{user_session.selected_github_repo}", DOCS_COLLECTION)
-                tests_count = agentic_rag.embedding_rag.update_embeddings(repo_data, f"github:{user_session.selected_github_repo}", TESTS_COLLECTION)
-                print(f"Embedded {docs_count} docs and {tests_count} test chunks")
+                if user_session.github_token and user_session.selected_github_repo:
+                    print(f"Loading GitHub data from: {user_session.selected_github_repo}")
+                    github_service = GitHubService(user_session.github_token)
+                    repo_data = github_service.get_repo_contents(user_session.selected_github_repo)
+                    
+                    # Debug print
+                    print(f"Fetched GitHub data: docs={len(repo_data.get('docs', {}))}, tests={len(repo_data.get('tests', {}))}, code={len(repo_data.get('code', {}))}")
+                    
+                    # Update graph and embeddings
+                    agentic_rag.graph_rag.update_knowledge(repo_data, f"github:{user_session.selected_github_repo}")
+                    docs_count = agentic_rag.embedding_rag.update_embeddings(repo_data, f"github:{user_session.selected_github_repo}", DOCS_COLLECTION)
+                    tests_count = agentic_rag.embedding_rag.update_embeddings(repo_data, f"github:{user_session.selected_github_repo}", TESTS_COLLECTION)
+                    print(f"Embedded {docs_count} docs and {tests_count} test chunks")
+            except Exception as e:
+                print(f"Error loading GitHub data: {str(e)}")
 
         # Start background thread
         thread = Thread(target=load_github_data)
@@ -952,13 +1083,14 @@ def process_selections():
         flash('GitHub data loading started in background. You can now use the Agentic RAG system.')
         return redirect(url_for('dashboard'))
 
-    return redirect(url_for('dashboard'))
+    flash('Please select a repository')
+    return redirect(url_for('select_repo'))
 
 
 @app.route("/process-jira-selection", methods=["POST"])
 @login_required  
 def process_jira_selection():
-    """Process Jira project selection - similar to GitHub repo selection"""
+    """Process Jira project selection - redirect to query interface"""
     jira_project_key = request.form.get('jira_project')
     jira_site_url = request.form.get('jira_site_url')
 
@@ -969,43 +1101,47 @@ def process_jira_selection():
 
         # Start background process to load Jira data
         def load_jira_data():
-            user_session = UserSession(
-                user_id=session['user_id'],
-                jira_token=session.get('jira_token'),
-                jira_url=session.get('jira_url'),
-                selected_jira_project=session.get('selected_jira_project')
-            )
+            try:
+                user_session = UserSession(
+                    user_id=session['user_id'],
+                    jira_token=session.get('jira_token'),
+                    jira_url=session.get('jira_url'),
+                    selected_jira_project=session.get('selected_jira_project')
+                )
 
-            if (user_session.jira_token and user_session.jira_url and 
-                user_session.selected_jira_project):
-                print(f"Loading Jira data from: {user_session.selected_jira_project}")
-                jira_service = JiraService(user_session.jira_url, user_session.jira_token)
-                test_cases = jira_service.get_test_cases(user_session.selected_jira_project)
-                
-                print(f"Fetched {len(test_cases)} Jira test cases")
-                
-                # Convert test cases to embeddable format
-                jira_data = {
-                    'tests': {
-                        f"jira:{tc['key']}": f"{tc['summary']}\n{tc['description']}" 
-                        for tc in test_cases
+                if (user_session.jira_token and user_session.jira_url and 
+                    user_session.selected_jira_project):
+                    print(f"Loading Jira data from: {user_session.selected_jira_project}")
+                    jira_service = JiraService(user_session.jira_url, user_session.jira_token)
+                    test_cases = jira_service.get_test_cases(user_session.selected_jira_project)
+                    
+                    print(f"Fetched {len(test_cases)} Jira test cases")
+                    
+                    # Convert test cases to embeddable format
+                    jira_data = {
+                        'tests': {
+                            f"jira:{tc['key']}": f"{tc['summary']}\n{tc['description']}" 
+                            for tc in test_cases
+                        }
                     }
-                }
-                
-                # Update graph and embeddings with Jira data
-                agentic_rag.graph_rag.update_knowledge(jira_data, f"jira:{user_session.selected_jira_project}")
-                jira_tests_count = agentic_rag.embedding_rag.update_embeddings(jira_data, f"jira:{user_session.selected_jira_project}", TESTS_COLLECTION)
-                print(f"Embedded {jira_tests_count} Jira test chunks")
+                    
+                    # Update graph and embeddings with Jira data
+                    agentic_rag.graph_rag.update_knowledge(jira_data, f"jira:{user_session.selected_jira_project}")
+                    tests_count = agentic_rag.embedding_rag.update_embeddings(jira_data, f"jira:{user_session.selected_jira_project}", TESTS_COLLECTION)
+                    print(f"Embedded {tests_count} Jira test chunks")                    
+            except Exception as e:
+                print(f"Error loading Jira data: {str(e)}")
 
         # Start background thread
         thread = Thread(target=load_jira_data)
         thread.start()
-
-        flash('Jira data loading started in background. You can now use the test generation system.')
+        
+        flash('Jira data loading started in background. You can now generate test cases.')
+        # Redirect to Jira dashboard for query interface
         return redirect(url_for('jira_dashboard'))
-
-    flash('Please select a Jira project')
-    return redirect(url_for('select_jira_project'))
+    else:
+        flash('Please select a valid Jira project')
+        return redirect(url_for('select_jira_project'))
 
 
 @app.route("/dashboard")

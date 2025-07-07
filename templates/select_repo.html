@@ -191,6 +191,19 @@ document.addEventListener('DOMContentLoaded', function() {
     selectBtns.forEach(btn => {
         btn.addEventListener('click', async function() {
             const repoName = this.getAttribute('data-repo');
+            const card = this.closest('.repo-card');
+            
+            // Clear previous selections
+            document.querySelectorAll('.repo-card').forEach(c => c.classList.remove('selected'));
+            
+            // Mark as selected
+            card.classList.add('selected');
+            
+            // Update button state
+            selectBtns.forEach(b => {
+                b.disabled = true;
+                b.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Processing...';
+            });
             
             // Show loading modal
             loadingModal.show();
@@ -206,14 +219,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 
                 if (response.ok) {
-                    // Redirect to dashboard or next step
-                    window.location.href = '/dashboard';
+                    // Show success state briefly
+                    this.innerHTML = '<i class="fas fa-check me-1"></i>Selected!';
+                    this.classList.remove('btn-primary');
+                    this.classList.add('btn-success');
+                    
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 1000);
                 } else {
                     throw new Error('Failed to process repository selection');
                 }
             } catch (error) {
                 console.error('Error:', error);
                 loadingModal.hide();
+                
+                // Reset button states
+                selectBtns.forEach(b => {
+                    b.disabled = false;
+                    b.innerHTML = '<i class="fas fa-check me-1"></i>Select Repository';
+                });
+                card.classList.remove('selected');
+                
                 alert('Error selecting repository: ' + error.message);
             }
         });
