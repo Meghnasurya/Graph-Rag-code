@@ -27,22 +27,17 @@
             
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
-            </button>
-            
-            <div class="collapse navbar-collapse" id="navbarNav">                <ul class="navbar-nav me-auto">
+            </button>            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
                     {% if session.user_id %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('dashboard') }}">
                             <i class="fas fa-tachometer-alt me-1"></i>Dashboard
                         </a>
-                    </li>                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('dashboard') }}">
-                            <i class="fab fa-github me-1"></i>GitHub
-                        </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('dashboard') }}">
-                            <i class="fas fa-tasks me-1"></i>Jira Tests
+                        <a class="nav-link" href="{{ url_for('query_interface') }}">
+                            <i class="fas fa-search me-1"></i>Query
                         </a>
                     </li>
                     {% endif %}
@@ -66,8 +61,8 @@
                     </li>
                     {% else %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('login') }}">
-                            <i class="fas fa-sign-in-alt me-1"></i>Login
+                        <a class="nav-link" href="{{ url_for('connect_services') }}">
+                            <i class="fas fa-link me-1"></i>Connect Services
                         </a>
                     </li>
                     {% endif %}

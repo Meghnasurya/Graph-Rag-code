@@ -39,7 +39,7 @@
             <div class="alert alert-warning">
                 <i class="fas fa-exclamation-triangle me-2"></i>
                 <strong>GitHub not connected.</strong> 
-                <a href="{{ url_for('github_auth') }}" class="alert-link">Connect your GitHub account</a> to access repositories.
+                <a href="{{ url_for('connect_services') }}" class="alert-link">Connect your GitHub account</a> to access repositories.
             </div>
         </div>
         {% endif %}
@@ -49,10 +49,9 @@
             <div class="alert alert-warning">
                 <i class="fas fa-exclamation-triangle me-2"></i>
                 <strong>Jira not connected.</strong> 
-                <a href="{{ url_for('jira_auth') }}" class="alert-link">Connect your Jira account</a> to manage test cases.
+                <a href="{{ url_for('connect_services') }}" class="alert-link">Connect your Jira account</a> to access test projects.
             </div>
-        </div>
-        {% endif %}
+        </div>        {% endif %}
     </div>
 
     <!-- Query Interface - Show if either GitHub repo or Jira project is selected -->

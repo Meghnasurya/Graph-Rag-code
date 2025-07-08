@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+
+{% block title %}Connect Services - Agentic RAG System{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <!-- Header -->
+            <div class="text-center mb-5">
+                <h1 class="display-5 fw-bold text-primary mb-3">
+                    <i class="fas fa-robot me-3"></i>
+                    Agentic RAG System
+                </h1>
+                <p class="lead text-muted">
+                    Connect your GitHub and Jira accounts to generate intelligent test cases
+                </p>
+            </div>
+
+            <!-- Connection Cards -->
+            <div class="row g-4">
+                <!-- GitHub Connection -->
+                <div class="col-md-6">
+                    <div class="card h-100 shadow-sm border-0">
+                        <div class="card-header bg-dark text-white text-center py-3">
+                            <h4 class="mb-0">
+                                <i class="fab fa-github me-2"></i>
+                                GitHub Connection
+                            </h4>
+                        </div>
+                        <div class="card-body p-4">
+                            <form id="github-form">
+                                <div class="mb-3">
+                                    <label for="github-token" class="form-label fw-semibold">
+                                        <i class="fas fa-key me-1"></i>
+                                        Personal Access Token
+                                    </label>
+                                    <input 
+                                        type="password" 
+                                        class="form-control" 
+                                        id="github-token" 
+                                        name="github_token" 
+                                        placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                                        required>
+                                    <div class="form-text">
+                                        <small>
+                                            <i class="fas fa-info-circle me-1"></i>
+                                            Generate a token at 
+                                            <a href="https://github.com/settings/tokens" target="_blank" class="text-decoration-none">
+                                                GitHub Settings → Personal access tokens
+                                            </a>
+                                            <br>Required scopes: <code>repo</code>
+                                        </small>
+                                    </div>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-dark w-100" id="github-connect-btn">
+                                    <i class="fas fa-link me-2"></i>
+                                    Connect GitHub
+                                </button>
+                            </form>
+                            
+                            <!-- GitHub Status -->
+                            <div id="github-status" class="mt-3" style="display: none;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Jira Connection -->
+                <div class="col-md-6">
+                    <div class="card h-100 shadow-sm border-0">
+                        <div class="card-header bg-primary text-white text-center py-3">
+                            <h4 class="mb-0">
+                                <i class="fab fa-atlassian me-2"></i>
+                                Jira Connection
+                            </h4>
+                        </div>
+                        <div class="card-body p-4">
+                            <form id="jira-form">
+                                <div class="mb-3">
+                                    <label for="jira-url" class="form-label fw-semibold">
+                                        <i class="fas fa-globe me-1"></i>
+                                        Jira Instance URL
+                                    </label>
+                                    <input 
+                                        type="url" 
+                                        class="form-control" 
+                                        id="jira-url" 
+                                        name="jira_url" 
+                                        placeholder="https://yourcompany.atlassian.net"
+                                        required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="jira-email" class="form-label fw-semibold">
+                                        <i class="fas fa-envelope me-1"></i>
+                                        Email Address
+                                    </label>
+                                    <input 
+                                        type="email" 
+                                        class="form-control" 
+                                        id="jira-email" 
+                                        name="jira_email" 
+                                        placeholder="your.email@company.com"
+                                        required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="jira-token" class="form-label fw-semibold">
+                                        <i class="fas fa-key me-1"></i>
+                                        API Token
+                                    </label>
+                                    <input 
+                                        type="password" 
+                                        class="form-control" 
+                                        id="jira-token" 
+                                        name="jira_token" 
+                                        placeholder="Your Jira API token"
+                                        required>
+                                    <div class="form-text">
+                                        <small>
+                                            <i class="fas fa-info-circle me-1"></i>
+                                            Generate a token at 
+                                            <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" class="text-decoration-none">
+                                                Atlassian Account Settings → API tokens
+                                            </a>
+                                        </small>
+                                    </div>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary w-100" id="jira-connect-btn">
+                                    <i class="fas fa-link me-2"></i>
+                                    Connect Jira
+                                </button>
+                            </form>
+                            
+                            <!-- Jira Status -->
+                            <div id="jira-status" class="mt-3" style="display: none;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Continue Button -->
+            <div class="text-center mt-5">
+                <button id="continue-btn" class="btn btn-success btn-lg px-5" style="display: none;">
+                    <i class="fas fa-arrow-right me-2"></i>
+                    Continue to Dashboard
+                </button>
+            </div>
+
+            <!-- Help Section -->
+            <div class="row mt-5">
+                <div class="col-12">
+                    <div class="card bg-light border-0">
+                        <div class="card-body p-4">
+                            <h5 class="card-title">
+                                <i class="fas fa-question-circle me-2 text-info"></i>
+                                Need Help?
+                            </h5>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="fw-semibold">GitHub Personal Access Token:</h6>
+                                    <ul class="small mb-3">
+                                        <li>Go to GitHub Settings → Developer settings → Personal access tokens</li>
+                                        <li>Click "Generate new token (classic)"</li>
+                                        <li>Select "repo" scope for repository access</li>
+                                        <li>Copy the generated token</li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="fw-semibold">Jira API Token:</h6>
+                                    <ul class="small mb-3">
+                                        <li>Go to Atlassian Account Settings → Security</li>
+                                        <li>Click "Create and manage API tokens"</li>
+                                        <li>Click "Create API token"</li>
+                                        <li>Copy the generated token</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const githubForm = document.getElementById('github-form');
+    const jiraForm = document.getElementById('jira-form');
+    const continueBtn = document.getElementById('continue-btn');
+    const githubStatus = document.getElementById('github-status');
+    const jiraStatus = document.getElementById('jira-status');
+    
+    let githubConnected = false;
+    let jiraConnected = false;
+
+    // GitHub form submission
+    githubForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const token = document.getElementById('github-token').value.trim();
+        if (!token) {
+            showNotification('Please enter GitHub token', 'warning');
+            return;
+        }
+
+        const connectBtn = document.getElementById('github-connect-btn');
+        connectBtn.disabled = true;
+        connectBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Connecting...';
+
+        fetch('/connect-github', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ github_token: token })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                githubConnected = true;
+                githubStatus.innerHTML = `
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Connected!</strong> Found ${data.repo_count} repositories
+                    </div>
+                `;
+                githubStatus.style.display = 'block';
+                connectBtn.innerHTML = '<i class="fas fa-check me-2"></i>Connected';
+                connectBtn.className = 'btn btn-success w-100';
+                checkContinueButton();
+            } else {
+                githubStatus.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Error:</strong> ${data.error}
+                    </div>
+                `;
+                githubStatus.style.display = 'block';
+                connectBtn.disabled = false;
+                connectBtn.innerHTML = '<i class="fas fa-link me-2"></i>Connect GitHub';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            githubStatus.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Error:</strong> Failed to connect to GitHub
+                </div>
+            `;
+            githubStatus.style.display = 'block';
+            connectBtn.disabled = false;
+            connectBtn.innerHTML = '<i class="fas fa-link me-2"></i>Connect GitHub';
+        });
+    });
+
+    // Jira form submission
+    jiraForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const url = document.getElementById('jira-url').value.trim();
+        const email = document.getElementById('jira-email').value.trim();
+        const token = document.getElementById('jira-token').value.trim();
+        
+        if (!url || !email || !token) {
+            showNotification('Please fill in all Jira fields', 'warning');
+            return;
+        }
+
+        const connectBtn = document.getElementById('jira-connect-btn');
+        connectBtn.disabled = true;
+        connectBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Connecting...';
+
+        fetch('/connect-jira', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+                jira_url: url,
+                jira_email: email,
+                jira_token: token 
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                jiraConnected = true;
+                jiraStatus.innerHTML = `
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Connected!</strong> Found ${data.project_count} projects
+                    </div>
+                `;
+                jiraStatus.style.display = 'block';
+                connectBtn.innerHTML = '<i class="fas fa-check me-2"></i>Connected';
+                connectBtn.className = 'btn btn-success w-100';
+                checkContinueButton();
+            } else {
+                jiraStatus.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Error:</strong> ${data.error}
+                    </div>
+                `;
+                jiraStatus.style.display = 'block';
+                connectBtn.disabled = false;
+                connectBtn.innerHTML = '<i class="fas fa-link me-2"></i>Connect Jira';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            jiraStatus.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Error:</strong> Failed to connect to Jira
+                </div>
+            `;
+            jiraStatus.style.display = 'block';
+            connectBtn.disabled = false;
+            connectBtn.innerHTML = '<i class="fas fa-link me-2"></i>Connect Jira';
+        });
+    });
+
+    // Continue button
+    continueBtn.addEventListener('click', function() {
+        window.location.href = '/dashboard';
+    });
+
+    function checkContinueButton() {
+        if (githubConnected || jiraConnected) {
+            continueBtn.style.display = 'inline-block';
+        }
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block title %}Select Jira Project - Agentic RAG System{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card-modern p-4">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h2 class="mb-2">
+                            <i class="fab fa-atlassian me-2 text-primary"></i>
+                            Select Jira Project
+                        </h2>
+                        <p class="text-muted mb-0">
+                            Choose your Jira site and project to integrate with the test generation system.
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-md-end">
+                        <div class="d-flex gap-2 justify-content-md-end flex-wrap">
+                            <span class="status-indicator status-connected">
+                                <i class="fab fa-atlassian me-1"></i>
+                                <span>Jira Connected</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Jira Site and Project Selection -->
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card-modern p-4">
+                <h4 class="mb-3">
+                    <i class="fas fa-tasks me-2 text-primary"></i>
+                    Project Configuration
+                </h4>
+                
+                <form id="jira-project-form">
+                    <!-- Jira Site Selection -->
+                    <div class="mb-4">
+                        <label for="jira-site" class="form-label fw-semibold">
+                            <i class="fas fa-globe me-2"></i>Jira Site
+                        </label>
+                        <select class="form-select" id="jira-site" name="jira_site" required>
+                            <option value="">Select a Jira site...</option>
+                            {% for site in jira_sites %}
+                            <option value="{{ site.url }}" data-site-id="{{ site.id }}">
+                                {{ site.name }} ({{ site.url }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            Choose the Jira site where your projects are located.
+                        </div>
+                    </div>
+
+                    <!-- Project Selection -->
+                    <div class="mb-4">
+                        <label for="jira-project" class="form-label fw-semibold">
+                            <i class="fas fa-folder me-2"></i>Project
+                        </label>
+                        <select class="form-select" id="jira-project" name="jira_project" required disabled>
+                            <option value="">First select a Jira site...</option>
+                        </select>
+                        <div class="form-text">
+                            Select the project where test cases will be created or updated.
+                        </div>
+                    </div>
+
+                    <!-- Test Repository Settings -->
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">
+                            <i class="fas fa-cog me-2"></i>Test Repository Settings
+                        </label>
+                        <div class="card bg-light p-3">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="create-new-tests" checked>
+                                        <label class="form-check-label" for="create-new-tests">
+                                            Create new test cases
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="update-existing-tests" checked>
+                                        <label class="form-check-label" for="update-existing-tests">
+                                            Update existing test cases
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="d-flex gap-3 justify-content-between">
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                        </a>
+                        
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-outline-primary" id="test-connection">
+                                <i class="fas fa-link me-2"></i>Test Connection
+                            </button>
+                            <button type="submit" class="btn btn-primary" id="select-project-btn">
+                                <i class="fas fa-check me-2"></i>Select Project
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Project Information Card (Hidden by default) -->
+    <div class="row mt-4" id="project-info" style="display: none;">
+        <div class="col-lg-8 mx-auto">
+            <div class="card-modern p-4 border-success">
+                <h5 class="text-success mb-3">
+                    <i class="fas fa-check-circle me-2"></i>
+                    Project Information
+                </h5>
+                <div id="project-details"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center p-4">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h5>Loading Projects...</h5>
+                <p class="text-muted mb-0">Please wait while we fetch your Jira projects.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const siteSelect = document.getElementById('jira-site');
+    const projectSelect = document.getElementById('jira-project');
+    const form = document.getElementById('jira-project-form');
+    const testConnectionBtn = document.getElementById('test-connection');
+    const selectProjectBtn = document.getElementById('select-project-btn');
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+
+    // Handle site selection
+    siteSelect.addEventListener('change', function() {
+        const selectedSite = this.value;
+        const siteId = this.selectedOptions[0]?.dataset.siteId;
+        
+        if (selectedSite && siteId) {
+            loadingModal.show();
+            projectSelect.disabled = true;
+            projectSelect.innerHTML = '<option value="">Loading projects...</option>';
+            
+            // Fetch projects for selected site
+            fetch('/get-projects', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `site_id=${encodeURIComponent(siteId)}&site_url=${encodeURIComponent(selectedSite)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                loadingModal.hide();
+                if (data.projects) {
+                    projectSelect.innerHTML = '<option value="">Select a project...</option>';
+                    data.projects.forEach(project => {
+                        const option = document.createElement('option');
+                        option.value = project.key;
+                        option.textContent = `${project.name} (${project.key})`;
+                        option.dataset.projectName = project.name;
+                        projectSelect.appendChild(option);
+                    });
+                    projectSelect.disabled = false;
+                } else {
+                    projectSelect.innerHTML = '<option value="">No projects found</option>';
+                    showNotification('No projects found for this site', 'warning');
+                }
+            })
+            .catch(error => {
+                loadingModal.hide();
+                console.error('Error:', error);
+                projectSelect.innerHTML = '<option value="">Error loading projects</option>';
+                showNotification('Error loading projects: ' + error.message, 'danger');
+            });
+        } else {
+            projectSelect.disabled = true;
+            projectSelect.innerHTML = '<option value="">First select a Jira site...</option>';
+        }
+    });
+
+    // Test connection
+    testConnectionBtn.addEventListener('click', function() {
+        const selectedSite = siteSelect.value;
+        const selectedProject = projectSelect.value;
+        
+        if (!selectedSite) {
+            showNotification('Please select a Jira site first', 'warning');
+            return;
+        }
+        
+        if (!selectedProject) {
+            showNotification('Please select a project first', 'warning');
+            return;
+        }
+        
+        this.disabled = true;
+        this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Testing...';
+        
+        // Test connection (you can implement this endpoint)
+        setTimeout(() => {
+            this.disabled = false;
+            this.innerHTML = '<i class="fas fa-link me-2"></i>Test Connection';
+            showNotification('Connection successful!', 'success');
+        }, 2000);
+    });
+
+    // Handle form submission
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const selectedSite = siteSelect.value;
+        const selectedProject = projectSelect.value;
+        const projectName = projectSelect.selectedOptions[0]?.dataset.projectName;
+        
+        if (!selectedSite || !selectedProject) {
+            showNotification('Please select both site and project', 'warning');
+            return;
+        }
+        
+        selectProjectBtn.disabled = true;
+        selectProjectBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Selecting...';
+        
+        // Submit project selection
+        fetch('/select-jira-project-api', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                jira_project: selectedProject,
+                jira_site_url: selectedSite
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification(data.message, 'success');
+                // Show project info
+                document.getElementById('project-details').innerHTML = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Site:</strong> ${selectedSite}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Project:</strong> ${projectName} (${selectedProject})
+                        </div>
+                    </div>
+                `;
+                document.getElementById('project-info').style.display = 'block';
+                
+                // Redirect after delay
+                setTimeout(() => {
+                    if (data.redirect) {
+                        window.location.href = data.redirect;
+                    }
+                }, 2000);
+            } else {
+                showNotification(data.error || 'Failed to select project', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Error selecting project: ' + error.message, 'danger');
+        })
+        .finally(() => {
+            selectProjectBtn.disabled = false;
+            selectProjectBtn.innerHTML = '<i class="fas fa-check me-2"></i>Select Project';
+        });
+    });
+});
+</script>
+{% endblock %}

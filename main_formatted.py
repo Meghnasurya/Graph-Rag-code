@@ -52,16 +52,6 @@ class Config:
     NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
     QDRANT_URL = os.getenv("QDRANT_URL")
     QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
-    
-    # GitHub OAuth
-    GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
-    GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
-    GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "http://localhost:5003/auth/github/callback")
-    
-    # Jira OAuth
-    JIRA_CLIENT_ID = os.getenv("JIRA_CLIENT_ID")
-    JIRA_CLIENT_SECRET = os.getenv("JIRA_CLIENT_SECRET")
-    JIRA_REDIRECT_URI = os.getenv("JIRA_REDIRECT_URI", "http://localhost:5003/auth/jira/callback")
 
 
 # Configure Gemini (lazy initialization)
@@ -137,6 +127,7 @@ class UserSession(BaseModel):
     github_token: Optional[str] = None
     jira_token: Optional[str] = None
     jira_url: Optional[str] = None
+    jira_email: Optional[str] = None
     selected_github_repo: Optional[str] = None
     selected_jira_project: Optional[str] = None
 
@@ -146,7 +137,7 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            return redirect(url_for('login'))
+            return redirect(url_for('connect_services'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -255,9 +246,10 @@ class GitHubService:
 
 
 class JiraService:
-    def __init__(self, url: str, token: str):
-        self.jira = Jira(url=url, token=token)
+    def __init__(self, url: str, email: str, token: str):
+        self.jira = Jira(url=url, username=email, password=token, cloud=True)
         self.url = url
+        self.email = email
         self.token = token
 
     def get_projects(self) -> List[Dict]:
@@ -859,7 +851,7 @@ class AgenticRAG:
         that represent the generated test cases.
         """
         try:
-            jira_service = JiraService(user_session.jira_url, user_session.jira_token)
+            jira_service = JiraService(user_session.jira_url, user_session.jira_email, user_session.jira_token)
             project_key = user_session.selected_jira_project
             
             # Call the new method in JiraService to handle the creation/update logic
@@ -935,141 +927,134 @@ agentic_rag = AgenticRAG()
 @app.route("/")
 def index():
     if 'user_id' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('connect_services'))
     return redirect(url_for('dashboard'))
 
 
-@app.route("/login")
-def login():
-    return render_template("login.html")
+@app.route("/connect")
+def connect_services():
+    """Connect to GitHub and Jira with direct credentials"""
+    return render_template("connect_services.html")
 
 
-@app.route("/auth/github")
-def github_auth():
-    """Redirect to GitHub OAuth"""
-    github_auth_url = (f"https://github.com/login/oauth/authorize"
-                      f"?client_id={Config.GITHUB_CLIENT_ID}"
-                      f"&redirect_uri={Config.GITHUB_REDIRECT_URI}"
-                      f"&scope=repo")
-    return redirect(github_auth_url)
-
-
-@app.route("/auth/github/callback")
-def github_callback():
-    """Handle GitHub OAuth callback"""
-    code = request.args.get('code')
-    if not code:
-        flash('GitHub authentication failed')
-        return redirect(url_for('login'))
-    
+@app.route("/connect/github", methods=["POST"])
+def connect_github():
+    """Connect to GitHub using personal access token"""
     try:
-        # Exchange code for token
-        token_response = requests.post('https://github.com/login/oauth/access_token', {
-            'client_id': Config.GITHUB_CLIENT_ID,
-            'client_secret': Config.GITHUB_CLIENT_SECRET,
-            'code': code
-        }, headers={'Accept': 'application/json'})
+        data = request.get_json()
+        github_token = data.get('github_token', '').strip()
         
-        if token_response.status_code != 200:
-            flash('Failed to exchange GitHub authorization code')
-            return redirect(url_for('login'))
+        if not github_token:
+            return jsonify({'success': False, 'error': 'GitHub token is required'}), 400
         
-        token_data = token_response.json()
-        access_token = token_data.get('access_token')
+        # Test the token by trying to access user info
+        github_service = GitHubService(github_token)
+        try:
+            user = github_service.github.get_user()
+            user_login = user.login  # This will fail if token is invalid
+        except Exception as e:
+            return jsonify({'success': False, 'error': 'Invalid GitHub token or insufficient permissions'}), 400
         
-        if access_token:
-            # Create user_id if doesn't exist
-            if 'user_id' not in session:
-                session['user_id'] = str(uuid.uuid4())
-            
-            # Store GitHub token
-            session['github_token'] = access_token
-            
-            flash('GitHub authentication successful')
-            return redirect(url_for('dashboard'))
-        else:
-            flash('Failed to get GitHub access token')
-            return redirect(url_for('login'))
-            
+        # Create user session if doesn't exist
+        if 'user_id' not in session:
+            session['user_id'] = str(uuid.uuid4())
+        
+        # Store GitHub token
+        session['github_token'] = github_token
+        session['github_connected'] = True
+        
+        return jsonify({'success': True, 'message': 'GitHub connected successfully'})
+        
     except Exception as e:
-        print(f"GitHub callback error: {str(e)}")
-        flash(f'GitHub authentication error: {str(e)}')
-        return redirect(url_for('login'))
+        print(f"GitHub connection error: {str(e)}")
+        return jsonify({'success': False, 'error': f'Connection failed: {str(e)}'}), 500
 
 
-@app.route("/auth/jira")
-def jira_auth():
-    """Redirect to Jira OAuth"""
-    jira_auth_url = (f"https://auth.atlassian.com/authorize"
-                    f"?audience=api.atlassian.com"
-                    f"&client_id={Config.JIRA_CLIENT_ID}"
-                    f"&scope=read:jira-work write:jira-work offline_access"
-                    f"&redirect_uri={Config.JIRA_REDIRECT_URI}"
-                    f"&response_type=code"
-                    f"&prompt=consent")
-    return redirect(jira_auth_url)
-
-
-@app.route("/auth/jira/callback")
-def jira_callback():
-    """Handle Jira OAuth callback"""
-    code = request.args.get('code')
-    if not code:
-        flash('Jira authentication failed - no authorization code received')
-        return redirect(url_for('login'))
-    
-    try:        # Exchange code for token
-        token_response = requests.post('https://auth.atlassian.com/oauth/token', {
-            'grant_type': 'authorization_code',
-            'client_id': Config.JIRA_CLIENT_ID,
-            'client_secret': Config.JIRA_CLIENT_SECRET,
-            'code': code,
-            'redirect_uri': Config.JIRA_REDIRECT_URI
-        })
+@app.route("/connect/jira", methods=["POST"])
+def connect_jira():
+    """Connect to Jira using direct credentials"""
+    try:
+        data = request.get_json()
+        jira_url = data.get('jira_url', '').strip()
+        jira_email = data.get('jira_email', '').strip()
+        jira_token = data.get('jira_token', '').strip()
         
-        if token_response.status_code != 200:
-            print(f"Token exchange failed: {token_response.status_code} - {token_response.text}")
-            flash('Failed to exchange authorization code for access token')
-            return redirect(url_for('login'))
+        if not all([jira_url, jira_email, jira_token]):
+            return jsonify({'success': False, 'error': 'All Jira credentials are required'}), 400
         
-        token_data = token_response.json()
-        access_token = token_data.get('access_token')
+        # Ensure URL has proper format
+        if not jira_url.startswith(('http://', 'https://')):
+            jira_url = 'https://' + jira_url
         
-        if access_token:
-            # Store in session - create user_id if doesn't exist
-            if 'user_id' not in session:
-                session['user_id'] = str(uuid.uuid4())
-            session['jira_token'] = access_token
-            
-            # Get and store accessible Jira sites
-            try:
-                sites_response = requests.get(
-                    'https://api.atlassian.com/oauth/token/accessible-resources',
-                    headers={'Authorization': f'Bearer {access_token}'},
-                    timeout=10
-                )
-                
-                if sites_response.status_code == 200:
-                    sites = sites_response.json()
-                    session['jira_sites'] = sites
-                    print(f"Found {len(sites)} accessible Jira sites")
-                else:
-                    print(f"Failed to get accessible sites: {sites_response.status_code}")
-                    session['jira_sites'] = []
-            except Exception as e:
-                print(f"Error getting Jira sites: {e}")
-                session['jira_sites'] = []
-            
-            flash('Jira authentication successful')
-            return redirect(url_for('dashboard'))
-        else:
-            flash('Failed to get Jira access token from response')
-            return redirect(url_for('login'))
-            
+        # Test the credentials by trying to access projects
+        try:
+            jira = Jira(url=jira_url, username=jira_email, password=jira_token, cloud=True)
+            projects = jira.projects()  # This will fail if credentials are invalid
+        except Exception as e:
+            return jsonify({'success': False, 'error': 'Invalid Jira credentials or URL'}), 400
+        
+        # Create user session if doesn't exist
+        if 'user_id' not in session:
+            session['user_id'] = str(uuid.uuid4())
+          # Store Jira credentials
+        session['jira_url'] = jira_url
+        session['jira_email'] = jira_email
+        session['jira_token'] = jira_token
+        session['jira_connected'] = True
+        
+        return jsonify({'success': True, 'message': 'Jira connected successfully'})
+        
     except Exception as e:
-        print(f"Jira callback error: {str(e)}")
-        flash(f'Jira authentication error: {str(e)}')
-        return redirect(url_for('login'))
+        print(f"Jira connection error: {str(e)}")
+        return jsonify({'success': False, 'error': f'Connection failed: {str(e)}'}), 500
+
+
+@app.route("/fetch/github-repos", methods=["POST"])
+def fetch_github_repos():
+    """Fetch GitHub repositories for connected account"""
+    try:
+        if 'github_token' not in session:
+            return jsonify({'success': False, 'error': 'GitHub not connected'}), 400
+        
+        github_service = GitHubService(session['github_token'])
+        repos = github_service.get_user_repos()
+        
+        return jsonify({'success': True, 'repos': repos})
+        
+    except Exception as e:
+        print(f"Error fetching GitHub repos: {str(e)}")
+        return jsonify({'success': False, 'error': f'Failed to fetch repositories: {str(e)}'}), 500
+
+
+@app.route("/fetch/jira-projects", methods=["POST"])
+def fetch_jira_projects():
+    """Fetch Jira projects for connected account"""
+    try:
+        if not all(key in session for key in ['jira_url', 'jira_email', 'jira_token']):
+            return jsonify({'success': False, 'error': 'Jira not connected'}), 400
+        
+        jira = Jira(
+            url=session['jira_url'],
+            username=session['jira_email'], 
+            password=session['jira_token'],
+            cloud=True
+        )
+        projects = jira.projects()
+        
+        # Format projects for frontend
+        formatted_projects = []
+        for project in projects:
+            formatted_projects.append({
+                'key': project.get('key'),
+                'name': project.get('name'),
+                'site_url': session['jira_url']
+            })
+        
+        return jsonify({'success': True, 'projects': formatted_projects})
+        
+    except Exception as e:
+        print(f"Error fetching Jira projects: {str(e)}")
+        return jsonify({'success': False, 'error': f'Failed to fetch projects: {str(e)}'}), 500
 
 
 @app.route("/select-github-repo", methods=["POST"])
@@ -1146,30 +1131,28 @@ def select_jira_project_api():
 
     try:
         session['selected_jira_project'] = jira_project_key
-        session['jira_url'] = jira_site_url
-
-        # Start background process to load Jira data
+        session['jira_url'] = jira_site_url        # Start background process to load Jira data
         def load_jira_data():
             try:
                 user_session = UserSession(
                     user_id=session['user_id'],
                     jira_token=session.get('jira_token'),
                     jira_url=session.get('jira_url'),
+                    jira_email=session.get('jira_email'),
                     selected_jira_project=session.get('selected_jira_project')
                 )
 
                 if (user_session.jira_token and user_session.jira_url and 
                     user_session.selected_jira_project):
                     print(f"Loading Jira data from: {user_session.selected_jira_project}")
-                    
-                    # Use direct API calls instead of atlassian library for better control
-                    headers = {'Authorization': f'Bearer {user_session.jira_token}'}
+                      # Use direct API calls with Basic Auth (email + API token)
+                    auth = HTTPBasicAuth(user_session.jira_email, user_session.jira_token)
                     
                     # Search for test-related issues using direct API
                     jql = f'project = {user_session.selected_jira_project} AND (issueType = "Test" OR labels = "test" OR summary ~ "test")'
                     search_url = f"{user_session.jira_url}/rest/api/3/search"
                     
-                    response = requests.get(search_url, headers=headers, params={'jql': jql})
+                    response = requests.get(search_url, auth=auth, params={'jql': jql})
                     
                     if response.status_code == 200:
                         issues_data = response.json()
@@ -1235,39 +1218,21 @@ def dashboard():
             flash('Error fetching GitHub repositories')
     
     # Get Jira projects if connected
-    if 'jira_token' in session:
+    if 'jira_token' in session and 'jira_url' in session and 'jira_email' in session:
         try:
-            # Use stored sites from session or fetch them
-            if 'jira_sites' not in session:
-                sites_response = requests.get(
-                    'https://api.atlassian.com/oauth/token/accessible-resources',
-                    headers={'Authorization': f'Bearer {session["jira_token"]}'},
-                    timeout=10
-                )
+            jira = Jira(
+                url=session['jira_url'],
+                username=session['jira_email'], 
+                password=session['jira_token'],
+                cloud=True
+            )
+            projects = jira.projects()
+            
+            for project in projects:
+                project['site_url'] = session['jira_url']
+                project['site_name'] = session['jira_url']
+                jira_projects.append(project)
                 
-                if sites_response.status_code == 200:
-                    session['jira_sites'] = sites_response.json()
-                else:
-                    session['jira_sites'] = []
-            
-            sites = session.get('jira_sites', [])
-            
-            for site in sites:
-                try:
-                    projects_response = requests.get(
-                        f'{site["url"]}/rest/api/3/project',
-                        headers={'Authorization': f'Bearer {session["jira_token"]}'},
-                        timeout=10
-                    )
-                    if projects_response.status_code == 200:
-                        projects = projects_response.json()
-                        for project in projects:
-                            project['site_url'] = site['url']
-                            project['site_name'] = site['name']
-                            jira_projects.append(project)
-                except Exception as e:
-                    print(f"Error fetching projects from site {site['url']}: {e}")
-                    continue
         except Exception as e:
             print(f"Error fetching Jira projects: {e}")
             flash('Error fetching Jira projects')
@@ -1294,6 +1259,7 @@ def process_query():
         github_token=session.get('github_token'),
         jira_token=session.get('jira_token'),
         jira_url=session.get('jira_url'),
+        jira_email=session.get('jira_email'),
         selected_github_repo=session.get('selected_github_repo'),
         selected_jira_project=session.get('selected_jira_project')
     )
@@ -1322,6 +1288,13 @@ def query_interface():
                          jira_connected='jira_token' in session)
 
 
+@app.route("/jira-project-selection")
+@login_required
+def jira_project_selection():
+    """Redirect to dashboard - Jira project selection is now handled there"""
+    return redirect(url_for('dashboard'))
+
+
 @app.route("/jira-query-interface")
 @login_required
 def jira_query_interface():
@@ -1332,17 +1305,16 @@ def jira_query_interface():
 @app.route("/get-projects", methods=["POST"])
 @login_required
 def get_projects():
-    """Get projects for a selected Jira site"""
-    site_id = request.form.get('site_id')
-    site_url = request.form.get('site_url')
-    if not site_id or not site_url:
-        return jsonify({'error': 'Site ID and URL are required'}), 400
+    """Get projects for connected Jira instance"""
+    if not all(key in session for key in ['jira_url', 'jira_email', 'jira_token']):
+        return jsonify({'error': 'Jira not connected'}), 400
 
     try:
-        # Get projects from the selected site
+        # Get projects using direct credentials
+        auth = HTTPBasicAuth(session['jira_email'], session['jira_token'])
         projects_response = requests.get(
-            f'{site_url}/rest/api/3/project',
-            headers={'Authorization': f'Bearer {session["jira_token"]}'}
+            f'{session["jira_url"]}/rest/api/3/project',
+            auth=auth
         )
         if projects_response.status_code == 200:
             projects = projects_response.json()
@@ -1358,7 +1330,7 @@ def logout():
     """Logout user"""
     session.clear()
     flash('You have been logged out')
-    return redirect(url_for('login'))
+    return redirect(url_for('connect_services'))
 
 
 @app.route("/clear-github-selection", methods=["POST"])
