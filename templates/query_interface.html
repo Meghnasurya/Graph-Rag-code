@@ -1,0 +1,476 @@
+{% extends "base.html" %}
+
+{% block title %}Query Interface - Agentic RAG System{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card-modern p-4">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h2 class="mb-2">
+                            <i class="fas fa-search me-2 text-primary"></i>
+                            Test Generation Interface
+                        </h2>
+                        <p class="text-muted mb-0">
+                            Generate intelligent test cases using AI-powered analysis of your requirements.
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-md-end">
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>
+                            Back to Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Current Selection -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="alert alert-info">
+                <div class="row">
+                    {% if github_repo %}
+                    <div class="col-md-6">
+                        <i class="fab fa-github me-2"></i>
+                        <strong>GitHub Repository:</strong> {{ github_repo }}
+                    </div>
+                    {% endif %}
+                    {% if jira_project %}
+                    <div class="col-md-6">
+                        <i class="fab fa-atlassian me-2"></i>
+                        <strong>Jira Project:</strong> {{ jira_project }}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Query Interface -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card-modern">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-magic me-2 text-primary"></i>
+                        Describe Your Testing Requirements
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <form id="queryForm">
+                        <div class="mb-3">
+                            <label for="queryInput" class="form-label fw-semibold">
+                                What kind of tests would you like to generate?
+                            </label>
+                            <textarea 
+                                class="form-control" 
+                                id="queryInput" 
+                                name="query"
+                                rows="6" 
+                                placeholder="Example: Create comprehensive unit tests for user authentication functionality including:
+- Password validation with various edge cases
+- Session management and timeout handling  
+- Multi-factor authentication flow
+- Error handling for invalid credentials
+- Security tests for common vulnerabilities"
+                                required
+                            ></textarea>
+                            <div class="form-text">
+                                <i class="fas fa-lightbulb me-1"></i>
+                                Be as specific as possible about the functionality, edge cases, and test scenarios you want covered.
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex gap-3 align-items-center">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-magic me-2"></i>
+                                Generate Tests
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" id="clearQuery">
+                                <i class="fas fa-eraser me-1"></i>
+                                Clear
+                            </button>
+                            {% if jira_project %}
+                            <div class="ms-auto">
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    Tests will be created/updated in your Jira project
+                                </small>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div class="row mb-4" id="loading-section" style="display: none;">
+        <div class="col-12">
+            <div class="card-modern p-4 text-center">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h5>Analyzing Requirements & Generating Tests...</h5>
+                <p class="text-muted mb-0">
+                    <span id="loading-text">Processing your request...</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="row" id="results-section" style="display: none;">
+        <div class="col-12">
+            <div class="card-modern">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-check-circle me-2 text-success"></i>
+                        Test Generation Results
+                    </h5>
+                </div>
+                <div class="card-body" id="results-content">
+                    <!-- Results will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Example Queries -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card-modern">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-examples me-2 text-info"></i>
+                        Example Queries
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="example-card" onclick="fillExample(this)">
+                                <h6>API Testing</h6>
+                                <p class="text-muted small">
+                                    Create comprehensive API tests for REST endpoints including authentication, validation, error handling, and performance testing.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="example-card" onclick="fillExample(this)">
+                                <h6>Database Operations</h6>
+                                <p class="text-muted small">
+                                    Generate tests for CRUD operations, data validation, transaction handling, and database constraints.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="example-card" onclick="fillExample(this)">
+                                <h6>User Interface</h6>
+                                <p class="text-muted small">
+                                    Create UI tests for user interactions, form validation, responsive design, and accessibility compliance.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="example-card" onclick="fillExample(this)">
+                                <h6>Security Testing</h6>
+                                <p class="text-muted small">
+                                    Generate security tests for authentication, authorization, input validation, and common vulnerabilities.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.example-card {
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    height: 100%;
+}
+
+.example-card:hover {
+    border-color: #007bff;
+    background-color: #f8f9fa;
+    transform: translateY(-2px);
+}
+
+.example-card h6 {
+    color: #007bff;
+    margin-bottom: 0.5rem;
+}
+
+.result-card {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1rem;
+    background-color: #f8f9fa;
+    height: 100%;
+}
+
+.result-card h6 {
+    color: #495057;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.card-modern {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    border-radius: 12px 12px 0 0 !important;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const queryForm = document.getElementById('queryForm');
+    const queryInput = document.getElementById('queryInput');
+    const loadingSection = document.getElementById('loading-section');
+    const resultsSection = document.getElementById('results-section');
+    const resultsContent = document.getElementById('results-content');
+    const clearButton = document.getElementById('clearQuery');
+
+    // Handle form submission
+    queryForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const query = queryInput.value.trim();
+        if (!query) return;
+
+        // Show loading state
+        loadingSection.style.display = 'block';
+        resultsSection.style.display = 'none';
+        
+        // Update loading text
+        const loadingTexts = [
+            'Analyzing your repository...',
+            'Searching existing documentation...',
+            'Reviewing current test coverage...',
+            'Generating new test cases...',
+            'Updating test repository...'
+        ];
+        
+        let textIndex = 0;
+        const loadingTextElement = document.getElementById('loading-text');
+        const loadingInterval = setInterval(() => {
+            loadingTextElement.textContent = loadingTexts[textIndex];
+            textIndex = (textIndex + 1) % loadingTexts.length;
+        }, 2000);
+
+        try {
+            const formData = new FormData();
+            formData.append('query', query);
+
+            const response = await fetch('/query', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            
+            clearInterval(loadingInterval);
+            loadingSection.style.display = 'none';
+            
+            if (result.error) {
+                showError(result.error);
+            } else {
+                showResults(result);
+            }
+            
+        } catch (error) {
+            clearInterval(loadingInterval);
+            loadingSection.style.display = 'none';
+            showError('Failed to process query: ' + error.message);
+        }
+    });
+
+    // Clear query
+    if (clearButton) {
+        clearButton.addEventListener('click', function() {
+            queryInput.value = '';
+            resultsSection.style.display = 'none';
+        });
+    }
+
+    function showResults(result) {
+        let html = '<div class="row">';
+        
+        // Analysis section
+        if (result.analysis) {
+            html += `
+                <div class="col-md-6 mb-3">
+                    <div class="result-card">
+                        <h6><i class="fas fa-analytics me-2"></i>Analysis</h6>
+                        <ul class="list-unstyled mb-0">
+                            <li><strong>Existing functionality:</strong> <span class="badge ${result.analysis.existing_functionality ? 'bg-success' : 'bg-secondary'}">${result.analysis.existing_functionality ? 'Yes' : 'No'}</span></li>
+                            <li><strong>Existing tests:</strong> <span class="badge ${result.analysis.existing_tests ? 'bg-success' : 'bg-warning'}">${result.analysis.existing_tests ? 'Yes' : 'No'}</span></li>
+                            <li><strong>Needs new tests:</strong> <span class="badge ${result.analysis.needs_new_tests ? 'bg-primary' : 'bg-secondary'}">${result.analysis.needs_new_tests ? 'Yes' : 'No'}</span></li>
+                            <li><strong>Needs test updates:</strong> <span class="badge ${result.analysis.needs_test_updates ? 'bg-info' : 'bg-secondary'}">${result.analysis.needs_test_updates ? 'Yes' : 'No'}</span></li>
+                        </ul>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Generated tests section
+        if (result.generated_tests) {
+            html += `
+                <div class="col-md-6 mb-3">
+                    <div class="result-card">
+                        <h6><i class="fas fa-code me-2"></i>Generated Tests</h6>
+                        <p><strong>File:</strong> ${result.generated_tests.file_name || 'N/A'}</p>
+                        <p><strong>Test Cases:</strong> ${result.generated_tests.test_cases ? result.generated_tests.test_cases.length : 0}</p>
+                        <div class="mt-2">
+                            <button class="btn btn-sm btn-outline-primary" onclick="showTestDetails(${JSON.stringify(result.generated_tests).replace(/"/g, '&quot;')})">
+                                <i class="fas fa-eye me-1"></i>View Details
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        html += '</div>';
+
+        // Success message
+        if (result.updated_embeddings) {
+            html += `
+                <div class="alert alert-success mt-3">
+                    <i class="fas fa-check-circle me-2"></i>
+                    <strong>Success!</strong> Tests have been generated and your project has been updated.
+                </div>
+            `;
+        }
+
+        // Jira update status
+        if (result.jira_update_status) {
+            if (result.jira_update_status.success) {
+                html += `
+                    <div class="alert alert-success mt-3">
+                        <i class="fab fa-atlassian me-2"></i>
+                        <strong>Jira Updated!</strong> ${result.jira_update_status.message}
+                        ${result.jira_update_status.issue_key ? `<br><small>Issue: ${result.jira_update_status.issue_key}</small>` : ''}
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="alert alert-warning mt-3">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Jira Update Issue:</strong> ${result.jira_update_status.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Existing tests message
+        if (result.message) {
+            html += `
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    ${result.message}
+                </div>
+            `;
+        }
+
+        resultsContent.innerHTML = html;
+        resultsSection.style.display = 'block';
+    }
+
+    function showError(error) {
+        resultsContent.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Error:</strong> ${error}
+            </div>
+        `;
+        resultsSection.style.display = 'block';
+    }
+});
+
+function fillExample(element) {
+    const title = element.querySelector('h6').textContent;
+    const description = element.querySelector('p').textContent;
+    
+    const examples = {
+        'API Testing': 'Create comprehensive API tests for REST endpoints including:\n- Authentication and authorization tests\n- Input validation and sanitization\n- Error handling for various HTTP status codes\n- Rate limiting and throttling tests\n- Performance and load testing\n- API versioning compatibility tests',
+        'Database Operations': 'Generate tests for database operations including:\n- CRUD operations with valid and invalid data\n- Data validation and constraint testing\n- Transaction handling and rollback scenarios\n- Concurrent access and locking tests\n- Database connection pooling tests\n- Data migration and schema change tests',
+        'User Interface': 'Create UI tests covering:\n- User interaction flows and navigation\n- Form validation with various input combinations\n- Responsive design across different screen sizes\n- Accessibility compliance (WCAG guidelines)\n- Cross-browser compatibility tests\n- Performance and loading time tests',
+        'Security Testing': 'Generate security tests for:\n- Authentication and session management\n- Authorization and access control\n- Input validation and SQL injection prevention\n- Cross-site scripting (XSS) protection\n- CSRF token validation\n- Password policy and encryption tests'
+    };
+    
+    document.getElementById('queryInput').value = examples[title] || description;
+}
+
+function showTestDetails(testData) {
+    let html = '<div class="modal fade" id="testDetailsModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">';
+    html += '<div class="modal-header"><h5 class="modal-title">Test Details</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>';
+    html += '<div class="modal-body">';
+    
+    if (testData.test_cases) {
+        html += '<h6>Test Cases:</h6><div class="accordion" id="testCasesAccordion">';
+        testData.test_cases.forEach((tc, index) => {
+            html += `
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button ${index > 0 ? 'collapsed' : ''}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse${index}">
+                            ${tc.name || `Test Case ${index + 1}`}
+                        </button>
+                    </h2>
+                    <div id="collapse${index}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" data-bs-parent="#testCasesAccordion">
+                        <div class="accordion-body">
+                            <p><strong>Description:</strong> ${tc.description || 'N/A'}</p>
+                            ${tc.steps ? `<p><strong>Steps:</strong></p><ol>${tc.steps.map(step => `<li>${step}</li>`).join('')}</ol>` : ''}
+                            <p><strong>Expected Result:</strong> ${tc.expected_result || 'N/A'}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+    }
+    
+    if (testData.test_code) {
+        html += '<h6 class="mt-3">Generated Code:</h6>';
+        html += `<pre class="bg-light p-3 rounded"><code>${testData.test_code}</code></pre>`;
+    }
+    
+    html += '</div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button></div></div></div></div>';
+    
+    // Remove existing modal if any
+    const existingModal = document.getElementById('testDetailsModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Add new modal
+    document.body.insertAdjacentHTML('beforeend', html);
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('testDetailsModal'));
+    modal.show();
+}
+</script>
+{% endblock %}

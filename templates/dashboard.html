@@ -17,27 +17,24 @@
                         <p class="text-muted mb-0">
                             Generate intelligent test cases using AI-powered analysis of your codebase and requirements.
                         </p>
-                    </div>
-                    <div class="col-md-4 text-md-end">
+                    </div>                    <div class="col-md-4 text-md-end">
                         <div class="d-flex gap-2 justify-content-md-end flex-wrap">
-                            <span class="status-indicator status-connected" id="github-status">
+                            <span class="status-indicator {% if github_connected %}status-connected{% else %}status-disconnected{% endif %}" id="github-status">
                                 <i class="fab fa-github me-1"></i>
-                                <span id="github-text">GitHub Connected</span>
+                                <span id="github-text">GitHub {% if github_connected %}Connected{% else %}Disconnected{% endif %}</span>
                             </span>
-                            <span class="status-indicator status-connected" id="jira-status">
+                            <span class="status-indicator {% if jira_connected %}status-connected{% else %}status-disconnected{% endif %}" id="jira-status">
                                 <i class="fab fa-atlassian me-1"></i>
-                                <span id="jira-text">Jira Connected</span>
+                                <span id="jira-text">Jira {% if jira_connected %}Connected{% else %}Disconnected{% endif %}</span>
                             </span>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-
-    <!-- Connection Status -->
+    </div>    <!-- Connection Status -->
     <div class="row mb-4" id="connection-alerts">
-        {% if not session.get('github_token') %}
+        {% if not github_connected %}
         <div class="col-12">
             <div class="alert alert-warning">
                 <i class="fas fa-exclamation-triangle me-2"></i>
@@ -47,7 +44,7 @@
         </div>
         {% endif %}
         
-        {% if not session.get('jira_token') %}
+        {% if not jira_connected %}
         <div class="col-12">
             <div class="alert alert-warning">
                 <i class="fas fa-exclamation-triangle me-2"></i>
@@ -58,8 +55,8 @@
         {% endif %}
     </div>
 
-    <!-- Query Interface -->
-    {% if session.get('github_token') and session.get('jira_token') %}
+    <!-- Query Interface - Show if either GitHub repo or Jira project is selected -->
+    {% if (github_repo_selected or jira_project_selected) %}
     <div class="row mb-4">
         <div class="col-12">
             <div class="query-container">
@@ -67,6 +64,24 @@
                     <i class="fas fa-search me-2 text-primary"></i>
                     Test Generation Query
                 </h4>
+                
+                <div class="alert alert-info mb-3">
+                    <div class="row">
+                        {% if github_repo_selected %}
+                        <div class="col-md-6">
+                            <i class="fab fa-github me-2"></i>
+                            <strong>GitHub:</strong> {{ github_repo_selected }}
+                        </div>
+                        {% endif %}
+                        {% if jira_project_selected %}
+                        <div class="col-md-6">
+                            <i class="fab fa-atlassian me-2"></i>
+                            <strong>Jira:</strong> {{ jira_project_selected }}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                
                 <form id="queryForm">
                     <div class="mb-3">
                         <label for="queryInput" class="form-label fw-semibold">
@@ -95,16 +110,101 @@
                             <i class="fas fa-eraser me-1"></i>
                             Clear
                         </button>
+                        {% if jira_project_selected %}
                         <div class="ms-auto">
                             <small class="text-muted">
                                 <i class="fas fa-info-circle me-1"></i>
                                 Tests will be created/updated in your selected Jira project
                             </small>
                         </div>
+                        {% endif %}
                     </div>
                 </form>
             </div>
         </div>
+    </div>
+    {% else %}    <!-- Repository and Project Selection -->
+    <div class="row mb-4">
+        {% if github_connected %}
+        <div class="col-md-6 mb-3">
+            <div class="card-modern">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fab fa-github me-2"></i>
+                        Select GitHub Repository
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if github_repo_selected %}
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        Selected: <strong>{{ github_repo_selected }}</strong>
+                        <button class="btn btn-sm btn-outline-success ms-2" onclick="clearGithubSelection()">Change</button>
+                    </div>
+                    {% else %}
+                    <form id="githubRepoForm">
+                        <div class="mb-3">
+                            <label for="githubRepo" class="form-label">Choose Repository:</label>
+                            <select class="form-select" id="githubRepo" name="github_repo" required>
+                                <option value="">Select a repository...</option>
+                                {% for repo in github_repos %}
+                                <option value="{{ repo.full_name }}">
+                                    {{ repo.name }} {% if repo.description %}({{ repo.description[:50] }}...){% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-check me-1"></i>
+                            Select Repository
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if jira_connected %}
+        <div class="col-md-6 mb-3">
+            <div class="card-modern">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fab fa-atlassian me-2"></i>
+                        Select Jira Project
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if jira_project_selected %}
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        Selected: <strong>{{ jira_project_selected }}</strong>
+                        <button class="btn btn-sm btn-outline-success ms-2" onclick="clearJiraSelection()">Change</button>
+                    </div>
+                    {% else %}
+                    <form id="jiraProjectForm">
+                        <div class="mb-3">
+                            <label for="jiraProject" class="form-label">Choose Project:</label>
+                            <select class="form-select" id="jiraProject" name="jira_project" required>
+                                <option value="">Select a project...</option>
+                                {% for project in jira_projects %}
+                                <option value="{{ project.key }}" data-site-url="{{ project.site_url }}">
+                                    {{ project.name }} ({{ project.key }}) - {{ project.site_name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <input type="hidden" id="jiraSiteUrl" name="jira_site_url">
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-check me-1"></i>
+                            Select Project
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
     {% endif %}
 
@@ -138,9 +238,7 @@
                 </div>
             </div>
         </div>
-    </div>
-
-    <!-- Quick Actions -->
+    </div>    <!-- Quick Actions -->
     <div class="row mb-4">
         <div class="col-12">
             <h5 class="mb-3">
@@ -155,10 +253,17 @@
                 </div>
                 <h6>Repository Selection</h6>
                 <p>Choose and analyze your GitHub repositories</p>
-                <a href="{{ url_for('select_repo') }}" class="btn btn-outline-primary btn-sm">
-                    <i class="fas fa-cog me-1"></i>
-                    Manage Repos
-                </a>
+                {% if session.get('selected_github_repo') %}
+                <button class="btn btn-outline-primary btn-sm" onclick="clearGithubSelection()">
+                    <i class="fas fa-sync me-1"></i>
+                    Change Repo
+                </button>
+                {% else %}
+                <button class="btn btn-outline-primary btn-sm" onclick="location.reload()">
+                    <i class="fas fa-plus me-1"></i>
+                    Select Repo
+                </button>
+                {% endif %}
             </div>
         </div>
         <div class="col-md-4 mb-3">
@@ -168,10 +273,17 @@
                 </div>
                 <h6>Project Management</h6>
                 <p>Configure your Jira projects and test management</p>
-                <a href="{{ url_for('select_project') }}" class="btn btn-outline-primary btn-sm">
-                    <i class="fas fa-tasks me-1"></i>
-                    Manage Projects
-                </a>
+                {% if session.get('selected_jira_project') %}
+                <button class="btn btn-outline-primary btn-sm" onclick="clearJiraSelection()">
+                    <i class="fas fa-sync me-1"></i>
+                    Change Project
+                </button>
+                {% else %}
+                <button class="btn btn-outline-primary btn-sm" onclick="location.reload()">
+                    <i class="fas fa-plus me-1"></i>
+                    Select Project
+                </button>
+                {% endif %}
             </div>
         </div>
         <div class="col-md-4 mb-3">
@@ -217,9 +329,121 @@ document.addEventListener('DOMContentLoaded', function() {
     const resultsSection = document.getElementById('results-section');
     const resultsContent = document.getElementById('results-content');
     const clearButton = document.getElementById('clearQuery');
+    const githubRepoForm = document.getElementById('githubRepoForm');
+    const jiraProjectForm = document.getElementById('jiraProjectForm');
+    const jiraProjectSelect = document.getElementById('jiraProject');
+    const jiraSiteUrlInput = document.getElementById('jiraSiteUrl');
 
     // Auto-check status on page load
-    checkStatus();
+    checkStatus();    // Handle GitHub repository selection
+    if (githubRepoForm) {
+        githubRepoForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(githubRepoForm);
+            const repoSelect = document.getElementById('githubRepo');
+            const selectedRepo = repoSelect.value;
+            
+            if (!selectedRepo) {
+                showError('Please select a repository');
+                return;
+            }
+            
+            try {
+                // Show loading
+                const submitButton = githubRepoForm.querySelector('button[type="submit"]');
+                const originalText = submitButton.innerHTML;
+                submitButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Loading...';
+                submitButton.disabled = true;
+                
+                const response = await fetch('/select-github-repo', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        github_repo: selectedRepo
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showSuccess(result.message);
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showError(result.error || 'Failed to select repository');
+                    submitButton.innerHTML = originalText;
+                    submitButton.disabled = false;
+                }
+            } catch (error) {
+                showError('Error selecting repository: ' + error.message);
+                submitButton.innerHTML = originalText;
+                submitButton.disabled = false;
+            }
+        });
+    }
+
+    // Handle Jira project selection
+    if (jiraProjectForm) {
+        // Update site URL when project changes
+        if (jiraProjectSelect) {
+            jiraProjectSelect.addEventListener('change', function() {
+                const selectedOption = jiraProjectSelect.options[jiraProjectSelect.selectedIndex];
+                const siteUrl = selectedOption.getAttribute('data-site-url');
+                if (jiraSiteUrlInput) {
+                    jiraSiteUrlInput.value = siteUrl || '';
+                }
+            });
+        }
+
+        jiraProjectForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const projectSelect = document.getElementById('jiraProject');
+            const selectedProject = projectSelect.value;
+            const siteUrl = document.getElementById('jiraSiteUrl').value;
+            
+            if (!selectedProject || !siteUrl) {
+                showError('Please select a project');
+                return;
+            }
+            
+            try {
+                // Show loading
+                const submitButton = jiraProjectForm.querySelector('button[type="submit"]');
+                const originalText = submitButton.innerHTML;
+                submitButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Loading...';
+                submitButton.disabled = true;
+                
+                const response = await fetch('/select-jira-project-api', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        jira_project: selectedProject,
+                        jira_site_url: siteUrl
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showSuccess(result.message);
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showError(result.error || 'Failed to select project');
+                    submitButton.innerHTML = originalText;
+                    submitButton.disabled = false;
+                }
+            } catch (error) {
+                showError('Error selecting project: ' + error.message);
+                submitButton.innerHTML = originalText;
+                submitButton.disabled = false;
+            }
+        });
+    }
 
     // Handle form submission
     if (queryForm) {
@@ -283,9 +507,7 @@ document.addEventListener('DOMContentLoaded', function() {
             queryInput.value = '';
             resultsSection.style.display = 'none';
         });
-    }
-
-    function showResults(result) {
+    }    function showResults(result) {
         let html = '<div class="row">';
         
         // Analysis section
@@ -330,9 +552,28 @@ document.addEventListener('DOMContentLoaded', function() {
             html += `
                 <div class="alert alert-success mt-3">
                     <i class="fas fa-check-circle me-2"></i>
-                    <strong>Success!</strong> Tests have been generated and your Jira project has been updated.
+                    <strong>Success!</strong> Tests have been generated and your project has been updated.
                 </div>
             `;
+        }
+
+        // Jira update status
+        if (result.jira_update_status) {
+            if (result.jira_update_status.success) {
+                html += `
+                    <div class="alert alert-success mt-3">
+                        <i class="fab fa-atlassian me-2"></i>
+                        <strong>Jira Updated!</strong> ${result.jira_update_status.message}
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="alert alert-warning mt-3">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Jira Update Issue:</strong> ${result.jira_update_status.message}
+                    </div>
+                `;
+            }
         }
 
         // Existing tests message
@@ -350,13 +591,41 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function showError(error) {
-        resultsContent.innerHTML = `
-            <div class="alert alert-danger">
-                <i class="fas fa-exclamation-triangle me-2"></i>
-                <strong>Error:</strong> ${error}
-            </div>
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+        alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 400px;';
+        alertDiv.innerHTML = `
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>Error:</strong> ${error}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         `;
-        resultsSection.style.display = 'block';
+        document.body.appendChild(alertDiv);
+        
+        // Auto remove after 5 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 5000);
+    }
+
+    function showSuccess(message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed';
+        alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 400px;';
+        alertDiv.innerHTML = `
+            <i class="fas fa-check-circle me-2"></i>
+            <strong>Success!</strong> ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(alertDiv);
+        
+        // Auto remove after 3 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 3000);
     }
 });
 
@@ -660,106 +929,147 @@ document.addEventListener('DOMContentLoaded', function() {
         queryInput.value = '';
         resultsSection.style.display = 'none';
         queryInput.focus();
-    });
-
-    function displayResults(result) {
-        // Display analysis
-        const analysisContent = document.getElementById('analysisContent');
-        if (result.analysis) {
-            analysisContent.innerHTML = `
-                <div class="mb-3">
-                    <h6><i class="fas fa-search me-2"></i>Requirements Analysis</h6>
-                    <div class="row g-2">
-                        <div class="col-6">
-                            <div class="badge ${result.analysis.existing_functionality ? 'bg-success' : 'bg-secondary'} w-100">
-                                <i class="fas fa-${result.analysis.existing_functionality ? 'check' : 'times'} me-1"></i>
-                                Existing Functionality
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="badge ${result.analysis.existing_tests ? 'bg-success' : 'bg-secondary'} w-100">
-                                <i class="fas fa-${result.analysis.existing_tests ? 'check' : 'times'} me-1"></i>
-                                Existing Tests
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="badge ${result.analysis.needs_new_tests ? 'bg-warning' : 'bg-secondary'} w-100">
-                                <i class="fas fa-${result.analysis.needs_new_tests ? 'plus' : 'check'} me-1"></i>
-                                New Tests Needed
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="badge ${result.analysis.needs_test_updates ? 'bg-info' : 'bg-secondary'} w-100">
-                                <i class="fas fa-${result.analysis.needs_test_updates ? 'edit' : 'check'} me-1"></i>
-                                Updates Needed
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div>
-                    <h6><i class="fas fa-lightbulb me-2"></i>Recommendations</h6>
-                    <ul class="list-unstyled">
-                        ${result.analysis.recommendations?.map(rec => 
-                            `<li><i class="fas fa-arrow-right me-2 text-primary"></i>${rec}</li>`
-                        ).join('') || '<li class="text-muted">No specific recommendations</li>'}
-                    </ul>
-                </div>
-            `;
-        }
-
-        // Display generated tests
-        const testContent = document.getElementById('testContent');
-        if (result.generated_tests) {
-            const tests = result.generated_tests;
-            testContent.innerHTML = `
-                <div class="mb-3">
-                    <h6><i class="fas fa-file-code me-2"></i>${tests.file_name || 'Generated Test File'}</h6>
-                    <div class="result-code">
-                        <pre><code>${tests.test_code || 'No test code generated'}</code></pre>
-                    </div>
-                </div>
-                <div>
-                    <h6><i class="fas fa-list me-2"></i>Test Cases (${tests.test_cases?.length || 0})</h6>
-                    ${tests.test_cases?.map((tc, index) => `
-                        <div class="card mb-2">
-                            <div class="card-body p-3">
-                                <h6 class="card-title">${tc.name}</h6>
-                                <p class="card-text text-muted">${tc.description}</p>
-                                ${tc.steps ? `
-                                    <div class="mb-2">
-                                        <strong>Steps:</strong>
-                                        <ol class="mb-0">
-                                            ${tc.steps.map(step => `<li>${step}</li>`).join('')}
-                                        </ol>
-                                    </div>
-                                ` : ''}
-                                ${tc.expected_result ? `
-                                    <div>
-                                        <strong>Expected Result:</strong> ${tc.expected_result}
-                                    </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                    `).join('') || '<p class="text-muted">No test cases generated</p>'}
-                </div>
-            `;
-        }
-
-        // Display Jira integration status
-        const jiraContent = document.getElementById('jiraContent');
-        jiraContent.innerHTML = `
-            <div class="alert alert-success" role="alert">
+    });    function showSuccess(message) {
+        const alertHtml = `
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
                 <i class="fas fa-check-circle me-2"></i>
-                Test cases have been automatically created/updated in your Jira project.
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         `;
+        document.getElementById('connection-alerts').insertAdjacentHTML('beforeend', alertHtml);
     }
 
-    // Auto-resize textarea
-    queryInput.addEventListener('input', function() {
-        this.style.height = 'auto';
-        this.style.height = this.scrollHeight + 'px';
-    });
+    function showError(message) {
+        const alertHtml = `
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+        document.getElementById('connection-alerts').insertAdjacentHTML('beforeend', alertHtml);
+    }
+
+    function showResults(result) {
+        let html = '<div class="row">';
+        
+        // Analysis section
+        if (result.analysis) {
+            html += `
+                <div class="col-md-6 mb-3">
+                    <div class="result-card">
+                        <h6><i class="fas fa-analytics me-2"></i>Analysis</h6>
+                        <ul class="list-unstyled mb-0">
+                            <li><strong>Existing functionality:</strong> ${result.analysis.existing_functionality ? 'Yes' : 'No'}</li>
+                            <li><strong>Existing tests:</strong> ${result.analysis.existing_tests ? 'Yes' : 'No'}</li>
+                            <li><strong>Needs new tests:</strong> ${result.analysis.needs_new_tests ? 'Yes' : 'No'}</li>
+                            <li><strong>Needs test updates:</strong> ${result.analysis.needs_test_updates ? 'Yes' : 'No'}</li>
+                        </ul>
+                        ${result.analysis.recommendations ? `
+                            <div class="mt-2">
+                                <strong>Recommendations:</strong>
+                                <ul class="mt-1">
+                                    ${result.analysis.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                                </ul>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Generated tests section
+        if (result.generated_tests) {
+            html += `
+                <div class="col-md-6 mb-3">
+                    <div class="result-card">
+                        <h6><i class="fas fa-code me-2"></i>Generated Tests</h6>
+                        <p><strong>File:</strong> ${result.generated_tests.file_name || 'Generated Test File'}</p>
+                        <p><strong>Test Cases:</strong> ${result.generated_tests.test_cases?.length || 0}</p>
+                        <div class="code-preview">
+                            <pre><code>${result.generated_tests.test_code || 'No test code generated'}</code></pre>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Jira status section
+        if (result.jira_update_status) {
+            html += `
+                <div class="col-12 mb-3">
+                    <div class="result-card">
+                        <h6><i class="fab fa-atlassian me-2"></i>Jira Integration</h6>
+                        ${result.jira_update_status.success ? 
+                            `<div class="alert alert-success mb-0">
+                                <i class="fas fa-check-circle me-2"></i>
+                                ${result.jira_update_status.message}
+                                ${result.jira_update_status.issue_key ? `<br><strong>Issue:</strong> ${result.jira_update_status.issue_key}` : ''}
+                            </div>` :
+                            `<div class="alert alert-warning mb-0">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                ${result.jira_update_status.message || 'Failed to update Jira'}
+                            </div>`
+                        }
+                    </div>
+                </div>
+            `;
+        }
+
+        html += '</div>';
+        resultsContent.innerHTML = html;
+        resultsSection.style.display = 'block';
+    }
+
+    // Clear selection functions
+    window.clearGithubSelection = function() {
+        fetch('/clear-github-selection', { method: 'POST' })
+            .then(() => location.reload())
+            .catch(error => showError('Error clearing GitHub selection'));
+    };
+
+    window.clearJiraSelection = function() {
+        fetch('/clear-jira-selection', { method: 'POST' })
+            .then(() => location.reload())
+            .catch(error => showError('Error clearing Jira selection'));
+    };
+
+    window.checkStatus = async function() {
+        try {
+            const response = await fetch('/status');
+            const status = await response.json();
+            
+            const statusSection = document.getElementById('status-section');
+            const statusContent = document.getElementById('status-content');
+            
+            statusContent.innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Connection Status</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-${status.github_connected ? 'check text-success' : 'times text-danger'} me-2"></i>GitHub Connected</li>
+                            <li><i class="fas fa-${status.jira_connected ? 'check text-success' : 'times text-danger'} me-2"></i>Jira Connected</li>
+                            <li><i class="fas fa-${status.repo_selected ? 'check text-success' : 'times text-warning'} me-2"></i>Repository Selected</li>
+                            <li><i class="fas fa-${status.project_selected ? 'check text-success' : 'times text-warning'} me-2"></i>Project Selected</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Collections</h6>
+                        <ul class="list-unstyled">
+                            <li>Documentation: ${status.collections_info?.docs_count || 0} items</li>
+                            <li>Tests: ${status.collections_info?.tests_count || 0} items</li>
+                        </ul>
+                        <small class="text-muted">Last updated: ${new Date(status.timestamp).toLocaleString()}</small>
+                    </div>
+                </div>
+            `;
+            
+            statusSection.style.display = 'block';
+        } catch (error) {
+            showError('Failed to check status');
+        }
+    };
 });
 </script>
 {% endblock %}

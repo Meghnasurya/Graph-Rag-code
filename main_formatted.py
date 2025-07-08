@@ -851,7 +851,7 @@ agentic_rag = AgenticRAG()
 def index():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    return render_template("dashboard.html")
+    return redirect(url_for('dashboard'))
 
 
 @app.route("/login")
@@ -893,18 +893,15 @@ def github_callback():
         access_token = token_data.get('access_token')
         
         if access_token:
-            # Create user_id if doesn't exist, but don't override existing sessions
+            # Create user_id if doesn't exist
             if 'user_id' not in session:
                 session['user_id'] = str(uuid.uuid4())
             
-            # Store GitHub token separately from Jira
+            # Store GitHub token
             session['github_token'] = access_token
             
-            # Clear any previous GitHub selections to start fresh
-            session.pop('selected_github_repo', None)
-            
             flash('GitHub authentication successful')
-            return redirect(url_for('select_repo'))
+            return redirect(url_for('dashboard'))
         else:
             flash('Failed to get GitHub access token')
             return redirect(url_for('login'))
@@ -921,9 +918,10 @@ def jira_auth():
     jira_auth_url = (f"https://auth.atlassian.com/authorize"
                     f"?audience=api.atlassian.com"
                     f"&client_id={Config.JIRA_CLIENT_ID}"
-                    f"&scope=read:jira-work write:jira-work"
+                    f"&scope=read:jira-work write:jira-work offline_access"
                     f"&redirect_uri={Config.JIRA_REDIRECT_URI}"
-                    f"&response_type=code")
+                    f"&response_type=code"
+                    f"&prompt=consent")
     return redirect(jira_auth_url)
 
 
@@ -935,8 +933,7 @@ def jira_callback():
         flash('Jira authentication failed - no authorization code received')
         return redirect(url_for('login'))
     
-    try:
-        # Exchange code for token
+    try:        # Exchange code for token
         token_response = requests.post('https://auth.atlassian.com/oauth/token', {
             'grant_type': 'authorization_code',
             'client_id': Config.JIRA_CLIENT_ID,
@@ -959,13 +956,27 @@ def jira_callback():
                 session['user_id'] = str(uuid.uuid4())
             session['jira_token'] = access_token
             
-            # Clear any previous Jira selections to start fresh
-            session.pop('selected_jira_project', None)
-            session.pop('jira_url', None)
+            # Get and store accessible Jira sites
+            try:
+                sites_response = requests.get(
+                    'https://api.atlassian.com/oauth/token/accessible-resources',
+                    headers={'Authorization': f'Bearer {access_token}'},
+                    timeout=10
+                )
+                
+                if sites_response.status_code == 200:
+                    sites = sites_response.json()
+                    session['jira_sites'] = sites
+                    print(f"Found {len(sites)} accessible Jira sites")
+                else:
+                    print(f"Failed to get accessible sites: {sites_response.status_code}")
+                    session['jira_sites'] = []
+            except Exception as e:
+                print(f"Error getting Jira sites: {e}")
+                session['jira_sites'] = []
             
             flash('Jira authentication successful')
-            # Always redirect to project selection, not to the Jira homepage
-            return redirect(url_for('select_jira_project'))
+            return redirect(url_for('dashboard'))
         else:
             flash('Failed to get Jira access token from response')
             return redirect(url_for('login'))
@@ -976,105 +987,26 @@ def jira_callback():
         return redirect(url_for('login'))
 
 
-@app.route("/select-repo")
+@app.route("/select-github-repo", methods=["POST"])
 @login_required
-def select_repo():
-    """Select GitHub repository"""
+def select_github_repo():
+    """Select GitHub repository from dashboard"""
     if 'github_token' not in session:
-        return redirect(url_for('github_auth'))
+        return jsonify({'error': 'GitHub not connected'}), 400
     
-    github_service = GitHubService(session['github_token'])
-    repos = github_service.get_user_repos()
-    return render_template("select_repo.html", repos=repos)
-
-
-@app.route("/select-jira-project")
-@login_required
-def select_jira_project():
-    """Select Jira project - similar to GitHub repo selection"""
-    if 'jira_token' not in session:
-        flash('Please authenticate with Jira first')
-        return redirect(url_for('jira_auth'))
+    repo_data = request.get_json()
+    github_repo = repo_data.get('github_repo') if repo_data else request.form.get('github_repo')
+    
+    if not github_repo:
+        return jsonify({'error': 'Repository selection required'}), 400
     
     try:
-        # Get user's Jira sites with better error handling
-        sites_response = requests.get(
-            'https://api.atlassian.com/oauth/token/accessible-resources',
-            headers={'Authorization': f'Bearer {session["jira_token"]}'},
-            timeout=10
-        )
+        # Test GitHub access
+        github_service = GitHubService(session['github_token'])
+        repo = github_service.github.get_repo(github_repo)
         
-        if sites_response.status_code == 401:
-            flash('Jira authentication expired. Please login again.')
-            session.pop('jira_token', None)
-            return redirect(url_for('jira_auth'))
-        elif sites_response.status_code != 200:
-            flash(f'Error accessing Jira sites: {sites_response.status_code}')
-            return redirect(url_for('login'))
-            
-        sites = sites_response.json()
-        if not sites:
-            flash('No accessible Jira sites found. Please check your permissions.')
-            return redirect(url_for('login'))
-        
-        # Fetch all projects from all sites
-        all_projects = []
-        for site in sites:
-            try:
-                projects_response = requests.get(
-                    f'{site["url"]}/rest/api/3/project',
-                    headers={'Authorization': f'Bearer {session["jira_token"]}'},
-                    timeout=10
-                )
-                if projects_response.status_code == 200:
-                    projects = projects_response.json()
-                    for project in projects:
-                        project['site_url'] = site['url']
-                        project['site_name'] = site['name']
-                        all_projects.append(project)
-                else:
-                    print(f"Failed to fetch projects from {site['name']}: {projects_response.status_code}")
-            except Exception as e:
-                print(f"Error fetching projects from site {site['url']}: {e}")
-                continue
-        
-        if not all_projects:
-            flash('No accessible Jira projects found. Please check your project permissions.')
-            return redirect(url_for('login'))
-        
-        return render_template("select_jira_project.html", projects=all_projects)
-    except Exception as e:
-        print(f"Error in select_jira_project: {str(e)}")
-        flash(f'Error fetching Jira projects: {str(e)}')
-        return redirect(url_for('login'))
-
-
-@app.route("/process-selections", methods=["POST"])
-@login_required
-def process_selections():
-    """Process repository and project selections"""
-    github_repo = request.form.get('github_repo')
-    
-    if github_repo:
         session['selected_github_repo'] = github_repo
         
-        # Test GitHub access immediately to provide feedback
-        try:
-            github_service = GitHubService(session['github_token'])
-            repo = github_service.github.get_repo(github_repo)
-            repo_info = {
-                'name': repo.name,
-                'full_name': repo.full_name,
-                'description': repo.description,
-                'accessible': True
-            }
-        except Exception as e:
-            print(f"Error accessing repository {github_repo}: {e}")
-            flash(f'Error accessing repository {github_repo}: {str(e)}')
-            return redirect(url_for('select_repo'))
-
-        flash(f'GitHub repository selected: {github_repo}')
-
         # Start background process to load GitHub data
         def load_github_data():
             try:
@@ -1089,9 +1021,6 @@ def process_selections():
                     github_service = GitHubService(user_session.github_token)
                     repo_data = github_service.get_repo_contents(user_session.selected_github_repo)
                     
-                    # Debug print
-                    print(f"Fetched GitHub data: docs={len(repo_data.get('docs', {}))}, tests={len(repo_data.get('tests', {}))}, code={len(repo_data.get('code', {}))}")
-                    
                     # Update graph and embeddings
                     agentic_rag.graph_rag.update_knowledge(repo_data, f"github:{user_session.selected_github_repo}")
                     docs_count = agentic_rag.embedding_rag.update_embeddings(repo_data, f"github:{user_session.selected_github_repo}", DOCS_COLLECTION)
@@ -1102,26 +1031,37 @@ def process_selections():
 
         # Start background thread
         thread = Thread(target=load_github_data)
+        thread.daemon = True
         thread.start()
 
-        flash('GitHub data loading started in background. You can now use the Agentic RAG system.')
-        return redirect(url_for('dashboard'))
+        return jsonify({
+            'success': True,
+            'message': f'Repository {github_repo} selected successfully. Data loading in background.',
+            'redirect': url_for('query_interface')
+        })
+        
+    except Exception as e:
+        print(f"Error accessing repository {github_repo}: {e}")
+        return jsonify({'error': f'Error accessing repository: {str(e)}'}), 500
 
-    flash('Please select a repository')
-    return redirect(url_for('select_repo'))
 
-
-@app.route("/process-jira-selection", methods=["POST"])
+@app.route("/select-jira-project-api", methods=["POST"])
 @login_required  
-def process_jira_selection():
-    """Process Jira project selection - redirect to query interface"""
-    jira_project_key = request.form.get('jira_project')
-    jira_site_url = request.form.get('jira_site_url')
+def select_jira_project_api():
+    """Select Jira project from dashboard"""
+    if 'jira_token' not in session:
+        return jsonify({'error': 'Jira not connected'}), 400
+    
+    request_data = request.get_json() if request.is_json else request.form
+    jira_project_key = request_data.get('jira_project')
+    jira_site_url = request_data.get('jira_site_url')
 
-    if jira_project_key and jira_site_url:
+    if not jira_project_key or not jira_site_url:
+        return jsonify({'error': 'Project selection and site URL required'}), 400
+
+    try:
         session['selected_jira_project'] = jira_project_key
         session['jira_url'] = jira_site_url
-        flash(f'Jira project selected: {jira_project_key}')
 
         # Start background process to load Jira data
         def load_jira_data():
@@ -1136,67 +1076,124 @@ def process_jira_selection():
                 if (user_session.jira_token and user_session.jira_url and 
                     user_session.selected_jira_project):
                     print(f"Loading Jira data from: {user_session.selected_jira_project}")
-                    jira_service = JiraService(user_session.jira_url, user_session.jira_token)
-                    test_cases = jira_service.get_test_cases(user_session.selected_jira_project)
                     
-                    print(f"Fetched {len(test_cases)} Jira test cases")
+                    # Use direct API calls instead of atlassian library for better control
+                    headers = {'Authorization': f'Bearer {user_session.jira_token}'}
                     
-                    # Convert test cases to embeddable format
-                    jira_data = {
-                        'tests': {
-                            f"jira:{tc['key']}": f"{tc['summary']}\n{tc['description']}" 
-                            for tc in test_cases
+                    # Search for test-related issues using direct API
+                    jql = f'project = {user_session.selected_jira_project} AND (issueType = "Test" OR labels = "test" OR summary ~ "test")'
+                    search_url = f"{user_session.jira_url}/rest/api/3/search"
+                    
+                    response = requests.get(search_url, headers=headers, params={'jql': jql})
+                    
+                    if response.status_code == 200:
+                        issues_data = response.json()
+                        test_cases = []
+                        
+                        for issue in issues_data.get('issues', []):
+                            test_cases.append({
+                                'key': issue['key'],
+                                'summary': issue['fields']['summary'],
+                                'description': issue['fields'].get('description', ''),
+                                'status': issue['fields']['status']['name']
+                            })
+                        
+                        # Convert test cases to embeddable format
+                        jira_data = {
+                            'tests': {
+                                f"jira:{tc['key']}": f"{tc['summary']}\n{tc['description']}" 
+                                for tc in test_cases
+                            }
                         }
-                    }
+                        
+                        # Update graph and embeddings with Jira data
+                        agentic_rag.graph_rag.update_knowledge(jira_data, f"jira:{user_session.selected_jira_project}")
+                        tests_count = agentic_rag.embedding_rag.update_embeddings(jira_data, f"jira:{user_session.selected_jira_project}", TESTS_COLLECTION)
+                        print(f"Embedded {tests_count} Jira test chunks")
+                    else:
+                        print(f"Failed to fetch Jira issues: {response.status_code}")
                     
-                    # Update graph and embeddings with Jira data
-                    agentic_rag.graph_rag.update_knowledge(jira_data, f"jira:{user_session.selected_jira_project}")
-                    tests_count = agentic_rag.embedding_rag.update_embeddings(jira_data, f"jira:{user_session.selected_jira_project}", TESTS_COLLECTION)
-                    print(f"Embedded {tests_count} Jira test chunks")                    
             except Exception as e:
-                print(f"Error loading Jira data: {str(e)}")        # Start background thread
+                print(f"Error loading Jira data: {str(e)}")
+
+        # Start background thread
         thread = Thread(target=load_jira_data)
+        thread.daemon = True
         thread.start()
         
-        flash('Jira data loading started in background. You can now generate test cases.')
-        # Redirect directly to a simple text box interface
-        return redirect(url_for('jira_query_interface'))
-    else:
-        flash('Please select a valid Jira project')
-        return redirect(url_for('select_jira_project'))
+        return jsonify({
+            'success': True,
+            'message': f'Project {jira_project_key} selected successfully. Data loading in background.',
+            'redirect': url_for('query_interface')
+        })
+        
+    except Exception as e:
+        print(f"Error selecting Jira project: {e}")
+        return jsonify({'error': f'Error selecting project: {str(e)}'}), 500
+
 
 
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    """Main dashboard with agentic RAG interface"""
-    return render_template("dashboard.html")
-
-
-@app.route("/jira-dashboard")
-@login_required
-def jira_dashboard():
-    """Jira-specific dashboard for test generation"""
-    if 'jira_token' not in session or 'selected_jira_project' not in session:
-        flash('Please select a Jira project first')
-        return redirect(url_for('select_jira_project'))
+    """Main dashboard with GitHub repo and Jira project selection"""
+    github_repos = []
+    jira_projects = []
     
-    return render_template("jira_dashboard.html", 
-                         project=session.get('selected_jira_project'),
-                         jira_url=session.get('jira_url'))
-
-
-@app.route("/jira-query-interface")
-@login_required
-def jira_query_interface():
-    """Simple Jira query interface with just a text box"""
-    if 'jira_token' not in session or 'selected_jira_project' not in session:
-        flash('Please select a Jira project first')
-        return redirect(url_for('select_jira_project'))
+    # Get GitHub repositories if connected
+    if 'github_token' in session:
+        try:
+            github_service = GitHubService(session['github_token'])
+            github_repos = github_service.get_user_repos()
+        except Exception as e:
+            print(f"Error fetching GitHub repos: {e}")
+            flash('Error fetching GitHub repositories')
     
-    return render_template("jira_query_interface.html", 
-                         project=session.get('selected_jira_project'),
-                         jira_url=session.get('jira_url'))
+    # Get Jira projects if connected
+    if 'jira_token' in session:
+        try:
+            # Use stored sites from session or fetch them
+            if 'jira_sites' not in session:
+                sites_response = requests.get(
+                    'https://api.atlassian.com/oauth/token/accessible-resources',
+                    headers={'Authorization': f'Bearer {session["jira_token"]}'},
+                    timeout=10
+                )
+                
+                if sites_response.status_code == 200:
+                    session['jira_sites'] = sites_response.json()
+                else:
+                    session['jira_sites'] = []
+            
+            sites = session.get('jira_sites', [])
+            
+            for site in sites:
+                try:
+                    projects_response = requests.get(
+                        f'{site["url"]}/rest/api/3/project',
+                        headers={'Authorization': f'Bearer {session["jira_token"]}'},
+                        timeout=10
+                    )
+                    if projects_response.status_code == 200:
+                        projects = projects_response.json()
+                        for project in projects:
+                            project['site_url'] = site['url']
+                            project['site_name'] = site['name']
+                            jira_projects.append(project)
+                except Exception as e:
+                    print(f"Error fetching projects from site {site['url']}: {e}")
+                    continue
+        except Exception as e:
+            print(f"Error fetching Jira projects: {e}")
+            flash('Error fetching Jira projects')
+    
+    return render_template("dashboard.html", 
+                         github_repos=github_repos, 
+                         jira_projects=jira_projects,
+                         github_connected='github_token' in session,
+                         jira_connected='jira_token' in session,
+                         github_repo_selected=session.get('selected_github_repo'),
+                         jira_project_selected=session.get('selected_jira_project'))
 
 
 @app.route("/query", methods=["POST"])
@@ -1221,27 +1218,30 @@ def process_query():
     return jsonify(result)
 
 
-@app.route("/jira-query", methods=["POST"])
+@app.route("/query-interface")
 @login_required
-def process_jira_query():
-    """Process user query specifically for Jira test generation"""
-    query = request.form.get('query')
-    if not query:
-        return jsonify({'error': 'Query is required'}), 400
+def query_interface():
+    """Query interface for users to input requirements"""
+    # Check if either GitHub repo or Jira project is selected
+    github_selected = session.get('selected_github_repo')
+    jira_selected = session.get('selected_jira_project')
+    
+    if not github_selected and not jira_selected:
+        flash('Please select a GitHub repository or Jira project first')
+        return redirect(url_for('dashboard'))
+    
+    return render_template("query_interface.html", 
+                         github_repo=github_selected,
+                         jira_project=jira_selected,
+                         github_connected='github_token' in session,
+                         jira_connected='jira_token' in session)
 
-    if 'jira_token' not in session or 'selected_jira_project' not in session:
-        return jsonify({'error': 'Jira project not selected'}), 400
 
-    user_session = UserSession(
-        user_id=session['user_id'],
-        jira_token=session.get('jira_token'),
-        jira_url=session.get('jira_url'),
-        selected_jira_project=session.get('selected_jira_project')
-    )
-
-    # Process query through agentic RAG
-    result = agentic_rag.process_query(query, user_session)
-    return jsonify(result)
+@app.route("/jira-query-interface")
+@login_required
+def jira_query_interface():
+    """Separate Jira query interface (keeping for backward compatibility)"""
+    return redirect(url_for('query_interface'))
 
 
 @app.route("/get-projects", methods=["POST"])
@@ -1274,6 +1274,23 @@ def logout():
     session.clear()
     flash('You have been logged out')
     return redirect(url_for('login'))
+
+
+@app.route("/clear-github-selection", methods=["POST"])
+@login_required
+def clear_github_selection():
+    """Clear GitHub repository selection"""
+    session.pop('selected_github_repo', None)
+    return jsonify({'success': True})
+
+
+@app.route("/clear-jira-selection", methods=["POST"])
+@login_required
+def clear_jira_selection():
+    """Clear Jira project selection"""
+    session.pop('selected_jira_project', None)
+    session.pop('jira_url', None)
+    return jsonify({'success': True})
 
 
 @app.route("/status")
