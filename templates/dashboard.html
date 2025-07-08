@@ -832,15 +832,14 @@ function updateStatusIndicator(elementId, textId, connected, service) {
                     <i class="fas fa-bolt me-2 text-warning"></i>
                     Quick Actions
                 </h5>
-                <div class="row g-3">
-                    <div class="col-md-3">
-                        <a href="{{ url_for('select_repo') }}" class="btn btn-outline-primary w-100">
+                <div class="row g-3">                    <div class="col-md-3">
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary w-100">
                             <i class="fab fa-github me-2"></i>
                             Change Repository
                         </a>
                     </div>
                     <div class="col-md-3">
-                        <a href="{{ url_for('select_project') }}" class="btn btn-outline-secondary w-100">
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary w-100">
                             <i class="fab fa-atlassian me-2"></i>
                             Change Project
                         </a>

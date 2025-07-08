@@ -64,28 +64,61 @@ class Config:
     JIRA_REDIRECT_URI = os.getenv("JIRA_REDIRECT_URI", "http://localhost:5003/auth/jira/callback")
 
 
-# Configure Gemini
-genai.configure(api_key=Config.GEMINI_API_KEY)
-gemini = genai.GenerativeModel("models/gemini-1.5-flash")
+# Configure Gemini (lazy initialization)
+gemini = None
+qdrant = None
 
-# Qdrant client setup
-qdrant = QdrantClient(url=Config.QDRANT_URL, api_key=Config.QDRANT_API_KEY)
+def init_gemini():
+    """Initialize Gemini AI client"""
+    global gemini
+    if gemini is None and Config.GEMINI_API_KEY:
+        try:
+            genai.configure(api_key=Config.GEMINI_API_KEY)
+            gemini = genai.GenerativeModel("models/gemini-1.5-flash")
+            print("✓ Gemini AI initialized successfully")
+        except Exception as e:
+            print(f"⚠ Gemini AI initialization failed: {e}")
+    return gemini
+
+def init_qdrant():
+    """Initialize Qdrant client"""
+    global qdrant
+    if qdrant is None and Config.QDRANT_URL:
+        try:
+            qdrant = QdrantClient(url=Config.QDRANT_URL, api_key=Config.QDRANT_API_KEY)
+            # Test connection
+            qdrant.get_collections()
+            print("✓ Qdrant initialized successfully")
+        except Exception as e:
+            print(f"⚠ Qdrant initialization failed: {e}")
+            qdrant = None
+    return qdrant
 
 # Configure collections
 DOCS_COLLECTION = "documentation_embeddings"
 TESTS_COLLECTION = "test_embeddings"
 
-# Ensure Qdrant collections exist
-for collection_name in [DOCS_COLLECTION, TESTS_COLLECTION]:
-    try:
-        collections = [c.name for c in qdrant.get_collections().collections]
-        if collection_name not in collections:
-            qdrant.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(size=768, distance=Distance.COSINE),
-            )
-    except Exception as e:
-        print(f"[Qdrant] Error checking/creating collection {collection_name}: {e}")
+def init_collections():
+    """Initialize Qdrant collections"""
+    qdrant_client = init_qdrant()
+    if qdrant_client is None:
+        print("⚠ Skipping collection initialization - Qdrant not available")
+        return
+    
+    # Ensure Qdrant collections exist
+    for collection_name in [DOCS_COLLECTION, TESTS_COLLECTION]:
+        try:
+            collections = [c.name for c in qdrant_client.get_collections().collections]
+            if collection_name not in collections:
+                qdrant_client.create_collection(
+                    collection_name=collection_name,
+                    vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+                )
+                print(f"✓ Created collection: {collection_name}")
+            else:
+                print(f"✓ Collection exists: {collection_name}")
+        except Exception as e:
+            print(f"⚠ Error checking/creating collection {collection_name}: {e}")
 
 
 # Data models
@@ -464,7 +497,13 @@ class EnhancedGraphRAG:
 
 class EnhancedEmbeddingRAG:
     def __init__(self):
-        self.client = qdrant
+        self.client = None
+
+    def get_client(self):
+        """Get Qdrant client, initializing if necessary"""
+        if self.client is None:
+            self.client = init_qdrant()
+        return self.client
 
     def update_embeddings(self, data: Dict[str, Any], source: str, collection_name: str):
         """Update embeddings without clearing existing data"""
@@ -527,6 +566,11 @@ class EnhancedEmbeddingRAG:
             
             for chunk, metadata in zip(batch_chunks, batch_metadata):
                 try:
+                    gemini_client = init_gemini()
+                    if not gemini_client:
+                        print("⚠ Gemini client not available for embedding")
+                        continue
+                        
                     result = genai.embed_content(
                         model="models/text-embedding-004",
                         content=chunk[:1500],
@@ -545,11 +589,15 @@ class EnhancedEmbeddingRAG:
                     continue
             
             if batch_points:
-                try:
-                    self.client.upsert(collection_name=collection_name, points=batch_points)
-                    points.extend(batch_points)
-                except Exception as e:
-                    print(f"Error storing batch: {e}")
+                client = self.get_client()
+                if client:
+                    try:
+                        client.upsert(collection_name=collection_name, points=batch_points)
+                        points.extend(batch_points)
+                    except Exception as e:
+                        print(f"Error storing batch: {e}")
+                else:
+                    print("⚠ Qdrant client not available, skipping batch storage")
             
             time.sleep(0.1)  # Rate limiting
         
@@ -558,6 +606,11 @@ class EnhancedEmbeddingRAG:
     def search(self, query: str, collection_name: str, top_k: int = 10) -> List[Dict]:
         """Search embeddings"""
         try:
+            gemini_client = init_gemini()
+            if not gemini_client:
+                print("⚠ Gemini client not available for embedding")
+                return []
+            
             result = genai.embed_content(
                 model="models/text-embedding-004",
                 content=query,
@@ -565,7 +618,12 @@ class EnhancedEmbeddingRAG:
             )
             query_vec = result['embedding']
             
-            results = self.client.search(
+            client = self.get_client()
+            if not client:
+                print("⚠ Qdrant client not available for search")
+                return []
+            
+            results = client.search(
                 collection_name=collection_name,
                 query_vector=query_vec,
                 limit=top_k,
@@ -635,23 +693,10 @@ class AgenticRAG:
                     "needs_new_tests": true,
                     "needs_test_updates": false,
                     "recommendations": ["Create new test cases for the requirement"]
-                }}
-                """
-            analysis_response = gemini.generate_content(analysis_prompt)
-            analysis_text = analysis_response.text.strip()
-            
-            # Clean up response text to extract JSON
-            if analysis_text.startswith('```json'):
-                analysis_text = analysis_text[7:]
-            if analysis_text.endswith('```'):
-                analysis_text = analysis_text[:-3]
-            analysis_text = analysis_text.strip()
-            
-            try:
-                analysis = json.loads(analysis_text)
-            except json.JSONDecodeError as json_error:
-                print(f"Analysis JSON parsing error: {json_error}")
-                print(f"Analysis response text: {analysis_text}")
+                }}                """
+            gemini_client = init_gemini()
+            if not gemini_client:
+                print("⚠ Gemini client not available for analysis")
                 # Fallback analysis
                 analysis = {
                     "existing_functionality": False,
@@ -660,6 +705,30 @@ class AgenticRAG:
                     "needs_test_updates": False,
                     "recommendations": ["Generate new test cases based on query"]
                 }
+            else:
+                analysis_response = gemini_client.generate_content(analysis_prompt)
+                analysis_text = analysis_response.text.strip()
+                
+                # Clean up response text to extract JSON
+                if analysis_text.startswith('```json'):
+                    analysis_text = analysis_text[7:]
+                if analysis_text.endswith('```'):
+                    analysis_text = analysis_text[:-3]
+                analysis_text = analysis_text.strip()
+                
+                try:
+                    analysis = json.loads(analysis_text)
+                except json.JSONDecodeError as json_error:
+                    print(f"Analysis JSON parsing error: {json_error}")
+                    print(f"Analysis response text: {analysis_text}")
+                    # Fallback analysis
+                    analysis = {
+                        "existing_functionality": False,
+                        "existing_tests": False,
+                        "needs_new_tests": True,
+                        "needs_test_updates": False,
+                        "recommendations": ["Generate new test cases based on query"]
+                    }
 
             # Step 3: Generate or update tests based on analysis
             if analysis.get('needs_new_tests') or analysis.get('needs_test_updates'):
@@ -713,9 +782,13 @@ class AgenticRAG:
                     ],
                     "test_code": "complete Python unittest code",
                     "file_name": "suggested_test_file_name.py"
-                }}
-                """
-            response = gemini.generate_content(generation_prompt)
+                }}                """
+            gemini_client = init_gemini()
+            if not gemini_client:
+                print("⚠ Gemini client not available for test generation")
+                return self._create_fallback_test_result(query)
+                
+            response = gemini_client.generate_content(generation_prompt)
             
             # Handle empty or None response
             if not response or not hasattr(response, 'text') or not response.text:
@@ -841,6 +914,18 @@ class AgenticRAG:
 # Flask Application
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# Initialization function
+def initialize_app():
+    """Initialize application services"""
+    print("🚀 Initializing Agentic RAG System...")
+    
+    # Initialize services with graceful fallbacks
+    init_gemini()
+    init_qdrant()
+    init_collections()
+    
+    print("✅ Application initialization complete")
 
 # Initialize services
 agentic_rag = AgenticRAG()
@@ -1297,37 +1382,55 @@ def clear_jira_selection():
 def status():
     """Application status endpoint"""
     try:
-        # Get collection info
-        docs_info = qdrant.get_collection(DOCS_COLLECTION)
-        tests_info = qdrant.get_collection(TESTS_COLLECTION)
+        # Check service availability
+        gemini_available = init_gemini() is not None
+        qdrant_available = init_qdrant() is not None
+        
+        collections_info = {'docs_count': 0, 'tests_count': 0}
+        if qdrant_available:
+            try:
+                qdrant_client = init_qdrant()
+                docs_info = qdrant_client.get_collection(DOCS_COLLECTION)
+                tests_info = qdrant_client.get_collection(TESTS_COLLECTION)
+                collections_info = {
+                    'docs_count': docs_info.points_count,
+                    'tests_count': tests_info.points_count
+                }
+            except Exception as e:
+                print(f"Error getting collection info: {e}")
         
         return jsonify({
             'status': 'running',
             'timestamp': datetime.now().isoformat(),
+            'services': {
+                'gemini_available': gemini_available,
+                'qdrant_available': qdrant_available,
+                'neo4j_available': True  # Assume available for now
+            },
             'github_connected': 'github_token' in session,
             'jira_connected': 'jira_token' in session,
             'repo_selected': 'selected_github_repo' in session,
             'project_selected': 'selected_jira_project' in session,
-            'collections_info': {
-                'docs_count': docs_info.points_count,
-                'tests_count': tests_info.points_count
-            }
+            'collections_info': collections_info
         })
     except Exception as e:
         return jsonify({
             'status': 'running',
             'timestamp': datetime.now().isoformat(),
+            'services': {
+                'gemini_available': False,
+                'qdrant_available': False,
+                'neo4j_available': False
+            },
             'github_connected': 'github_token' in session,
             'jira_connected': 'jira_token' in session,
             'repo_selected': 'selected_github_repo' in session,
             'project_selected': 'selected_jira_project' in session,
-            'collections_info': {
-                'docs_count': 0,
-                'tests_count': 0
-            },
+            'collections_info': {'docs_count': 0, 'tests_count': 0},
             'error': str(e)
         })
 
 
 if __name__ == "__main__":
+    initialize_app()
     app.run(debug=True, host="0.0.0.0", port=5003)

@@ -1,15 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
-<he                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('select_repo') }}">
-                            <i class="fab fa-github me-1"></i>GitHub
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('select_jira_project') }}">
-                            <i class="fas fa-tasks me-1"></i>Jira
-                        </a>
-                    </li>meta charset="UTF-8">
+<head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Agentic RAG System{% endblock %}</title>
     
@@ -43,14 +35,13 @@
                         <a class="nav-link" href="{{ url_for('dashboard') }}">
                             <i class="fas fa-tachometer-alt me-1"></i>Dashboard
                         </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('select_repo') }}">
+                    </li>                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('dashboard') }}">
                             <i class="fab fa-github me-1"></i>GitHub
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('select_jira_project') }}">
+                        <a class="nav-link" href="{{ url_for('dashboard') }}">
                             <i class="fas fa-tasks me-1"></i>Jira Tests
                         </a>
                     </li>
